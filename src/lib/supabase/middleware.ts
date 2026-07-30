@@ -9,7 +9,7 @@ export async function updateSession(req: NextRequest) {
     {
       cookies: {
         getAll() { return req.cookies.getAll() },
-        setAll(all) {
+        setAll(all: { name: string; value: string; options: any }[]) {
           all.forEach(({ name, value }) => req.cookies.set(name, value))
           res = NextResponse.next({ request: req })
           all.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
