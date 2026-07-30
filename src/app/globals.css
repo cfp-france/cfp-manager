@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { height: 100%; font-family: 'Inter', system-ui, sans-serif; }
+body { background: #F7F9FC; color: #1f2937; -webkit-font-smoothing: antialiased; }
+
+@layer components {
+  .btn { @apply inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors; }
+  .btn-primary { @apply bg-brand text-white hover:bg-navy; }
+  .btn-outline { @apply bg-white text-navy border border-gray-200 hover:bg-brand-light hover:border-brand; }
+  .btn-success { @apply bg-green-600 text-white hover:bg-green-700; }
+  .btn-danger { @apply bg-white text-red-600 border border-red-300 hover:bg-red-50; }
+  .btn-sm { @apply px-3 py-1.5 text-xs; }
+  .card { @apply bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden; }
+  .card-header { @apply px-4 py-3 border-b border-gray-200 flex items-center justify-between; }
+  .card-title { @apply text-sm font-bold text-navy; }
+  .card-body { @apply p-4; }
+  .field { @apply flex flex-col gap-1; }
+  .field label { @apply text-xs font-semibold text-navy; }
+  .field input, .field select, .field textarea {
+    @apply border border-gray-200 rounded-md px-3 py-2 text-sm bg-white outline-none focus:border-brand focus:ring-2 focus:ring-brand/20;
+  }
+  .status { @apply inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold; }
+  .status-pending { @apply bg-amber-100 text-amber-800; }
+  .status-validated { @apply bg-green-100 text-green-800; }
+  .status-refused { @apply bg-red-100 text-red-800; }
+  .status-active { @apply bg-brand-light text-brand; }
+  .status-archived { @apply bg-gray-100 text-gray-600; }
+  th { @apply bg-brand-50 text-gray-500 font-semibold text-[11px] uppercase tracking-wider text-left px-3 py-2 border-b border-gray-200; }
+  td { @apply text-sm px-3 py-2.5 border-b border-gray-100; }
+  tr:hover td { @apply bg-brand-50/50; }
+}
