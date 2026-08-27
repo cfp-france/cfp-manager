@@ -1,6 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { createCfa } from '@/actions/referentials'
+import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +29,7 @@ export default async function CfaPage() {
 
       <div className="card">
         <table className="w-full">
-          <thead><tr><th>Nom</th><th>Ville</th><th>Contact pédago</th><th>Email</th><th>Statut</th></tr></thead>
+          <thead><tr><th>Nom</th><th>Ville</th><th>Contact pédago</th><th>Email</th><th>Statut</th><th></th></tr></thead>
           <tbody>
             {rows?.map((r) => (
               <tr key={r.id}>
@@ -37,9 +38,10 @@ export default async function CfaPage() {
                 <td>{r.pedagogic_contact ?? '—'}</td>
                 <td>{r.email ?? '—'}</td>
                 <td>{r.archived_at ? <span className="status status-archived">Archivé</span> : <span className="status status-active">Actif</span>}</td>
+                <td><Link href={`/cfa/${r.id}`} className="btn btn-sm btn-outline">Modifier</Link></td>
               </tr>
             ))}
-            {(!rows || rows.length === 0) && <tr><td colSpan={5} className="text-center text-gray-500 py-8">Aucun CFA. Créez-en un via le formulaire ci-dessus.</td></tr>}
+            {(!rows || rows.length === 0) && <tr><td colSpan={6} className="text-center text-gray-500 py-8">Aucun CFA. Créez-en un via le formulaire ci-dessus.</td></tr>}
           </tbody>
         </table>
       </div>

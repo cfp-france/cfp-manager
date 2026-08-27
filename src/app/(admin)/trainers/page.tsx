@@ -1,6 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { createTrainer, linkTrainerToUser } from '@/actions/referentials'
+import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,7 @@ export default async function TrainersPage() {
 
       <div className="card">
         <table className="w-full">
-          <thead><tr><th>Nom</th><th>Email</th><th>Spécialités</th><th>Tarif</th><th>Compte lié</th><th>Statut</th></tr></thead>
+          <thead><tr><th>Nom</th><th>Email</th><th>Spécialités</th><th>Tarif</th><th>Compte lié</th><th>Statut</th><th></th></tr></thead>
           <tbody>
             {trainers?.map((t) => (
               <tr key={t.id}>
@@ -51,9 +52,10 @@ export default async function TrainersPage() {
                     </form>}
                 </td>
                 <td>{t.active ? <span className="status status-active">Actif</span> : <span className="status status-archived">Inactif</span>}</td>
+                <td><Link href={`/trainers/${t.id}`} className="btn btn-sm btn-outline">Modifier</Link></td>
               </tr>
             ))}
-            {(!trainers || trainers.length === 0) && <tr><td colSpan={6} className="text-center text-gray-500 py-8">Aucun formateur.</td></tr>}
+            {(!trainers || trainers.length === 0) && <tr><td colSpan={7} className="text-center text-gray-500 py-8">Aucun formateur.</td></tr>}
           </tbody>
         </table>
       </div>
