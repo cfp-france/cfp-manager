@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtHours, requireTrainer } from '@/lib/utils'
 import { submitTimeEntry } from '@/actions/entries'
 import { notFound } from 'next/navigation'
+import { PedagogyPicker } from '@/components/PedagogyPicker'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,12 +17,31 @@ export default async function SessionEditPage({ params }: { params: { id: string
 
   if (!session || session.trainer_id !== trainer?.id) notFound()
 
-  const { data: blocks } = session.mission?.formation_id
-    ? await s.from('competence_blocks').select('id, number, title, skills(id, number, label)').eq('formation_id', session.mission.formation_id).order('number')
-    : { data: [] }
+  // On charge TOUTES les formations (avec blocs + compétences) pour alimenter le picker,
+  // mais on verrouille la formation à celle de la mission si présente.
+  const { data: formationsRaw } = await s.from('formations')
+    .select('id, code, name, competence_blocks(id, number, title, skills(id, number, label))')
+    .is('archived_at', null)
+    .order('name')
+
+  const formations = (formationsRaw ?? []).map((f: any) => ({
+    id: f.id,
+    code: f.code,
+    name: f.name,
+    blocks: (f.competence_blocks ?? [])
+      .sort((a: any, b: any) => a.number - b.number)
+      .map((b: any) => ({
+        id: b.id,
+        number: b.number,
+        title: b.title,
+        skills: (b.skills ?? []).sort((a: any, b: any) => a.number - b.number),
+      })),
+  }))
 
   const existing = session.time_entries?.[0]
   const disabled = existing?.status === 'validated'
+  const initialBlockNumber: number | undefined = (existing?.competence_blocks_targeted ?? [])[0]
+  const initialSkillIds: string[] = existing?.skill_ids ?? []
 
   return (
     <div>
@@ -53,43 +73,12 @@ export default async function SessionEditPage({ params }: { params: { id: string
             </div>
           </div>
           <div className="card-body space-y-3">
-            {blocks && blocks.length > 0 ? (
-              <>
-                <div>
-                  <label className="text-xs font-semibold text-navy">Bloc(s) de compétences ciblé(s)</label>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {blocks.map((b: any) => {
-                      const checked = (existing?.competence_blocks_targeted ?? []).includes(b.number)
-                      return (
-                        <label key={b.id} className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-1.5 cursor-pointer hover:bg-brand-light">
-                          <input type="checkbox" name="blocks" value={b.number} defaultChecked={checked} disabled={disabled} />
-                          <span className="text-sm"><b>Bloc {b.number}</b> — {b.title}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-navy">Compétence(s) visée(s) *</label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1 mt-1 max-h-64 overflow-y-auto border border-gray-200 rounded-md p-2">
-                    {blocks.flatMap((b: any) => (b.skills ?? []).map((sk: any) => {
-                      const checked = (existing?.skill_ids ?? []).includes(sk.id)
-                      return (
-                        <label key={sk.id} className="flex items-start gap-2 p-1.5 hover:bg-brand-light rounded cursor-pointer text-xs">
-                          <input type="checkbox" name="skills" value={sk.id} defaultChecked={checked} disabled={disabled} className="mt-0.5" />
-                          <span><b>B{b.number}.{sk.number}</b> {sk.label}</span>
-                        </label>
-                      )
-                    }))}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="bg-amber-50 border-l-4 border-amber-500 p-3 rounded text-sm">
-                Aucune formation rattachée à cette mission — le référentiel de compétences n'est pas disponible.
-                Vous pouvez néanmoins remplir les champs texte ci-dessous.
-              </div>
-            )}
+            <PedagogyPicker
+              formations={formations}
+              fixedFormationId={session.mission?.formation_id ?? null}
+              initialBlockNumber={initialBlockNumber}
+              initialSkillIds={initialSkillIds}
+            />
             <div className="field"><label>Contenu abordé *</label>
               <textarea name="content_covered" rows={2} defaultValue={existing?.content_covered ?? ''} disabled={disabled} placeholder="Détail des chapitres, sujets, cas pratiques" required></textarea></div>
             <div className="field"><label>Supports pédagogiques utilisés</label>

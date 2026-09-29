@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { requireTrainer } from '@/lib/utils'
 import { declareSession } from '@/actions/entries'
+import { PedagogyPicker } from '@/components/PedagogyPicker'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,11 +10,23 @@ export default async function DeclareSessionPage() {
   const { trainer } = await requireTrainer()
   const s = createClient()
 
-  const [{ data: cfas }, { data: missions }, { data: blocks }] = await Promise.all([
+  const [{ data: cfas }, { data: missions }, { data: formationsRaw }] = await Promise.all([
     s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
     s.from('missions').select('id, name, cfa_id, formation_id').is('archived_at', null).order('name'),
-    s.from('competence_blocks').select('id, number, title, formation_id, skills(id, number, label)').order('number'),
+    s.from('formations').select('id, code, name, competence_blocks(id, number, title, skills(id, number, label))').is('archived_at', null).order('name'),
   ])
+
+  const formations = (formationsRaw ?? []).map((f: any) => ({
+    id: f.id,
+    code: f.code,
+    name: f.name,
+    blocks: (f.competence_blocks ?? [])
+      .sort((a: any, b: any) => a.number - b.number)
+      .map((b: any) => ({
+        id: b.id, number: b.number, title: b.title,
+        skills: (b.skills ?? []).sort((a: any, b: any) => a.number - b.number),
+      })),
+  }))
 
   if (!trainer) {
     return (
@@ -88,32 +101,7 @@ export default async function DeclareSessionPage() {
             </div>
           </div>
           <div className="card-body space-y-3">
-            {blocks && blocks.length > 0 && (
-              <>
-                <div>
-                  <label className="text-xs font-semibold text-navy">Bloc(s) de compétences ciblé(s)</label>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {blocks.map((b: any) => (
-                      <label key={b.id} className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-1.5 cursor-pointer hover:bg-brand-light">
-                        <input type="checkbox" name="blocks" value={b.number} />
-                        <span className="text-sm"><b>Bloc {b.number}</b> — {b.title}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-navy">Compétence(s) visée(s)</label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1 mt-1 max-h-64 overflow-y-auto border border-gray-200 rounded-md p-2">
-                    {blocks.flatMap((b: any) => (b.skills ?? []).map((sk: any) => (
-                      <label key={sk.id} className="flex items-start gap-2 p-1.5 hover:bg-brand-light rounded cursor-pointer text-xs">
-                        <input type="checkbox" name="skills" value={sk.id} className="mt-0.5" />
-                        <span><b>B{b.number}.{sk.number}</b> {sk.label}</span>
-                      </label>
-                    )))}
-                  </div>
-                </div>
-              </>
-            )}
+            <PedagogyPicker formations={formations} fixedFormationId={null} />
             <div className="field"><label>Contenu abordé <span className="text-red-600">*</span></label>
               <textarea name="content_covered" rows={2} required placeholder="Détail des chapitres, sujets, cas pratiques" /></div>
             <div className="field"><label>Supports pédagogiques utilisés</label>

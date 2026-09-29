@@ -20,6 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       { href: '/trainers', label: 'Formateurs', icon: '👤' },
       { href: '/missions', label: 'Missions', icon: '📚' },
       { href: '/missions/new', label: 'Créer une mission', icon: '➕' },
+      { href: '/referentiels', label: 'Formations / Matières', icon: '📖' },
     ]},
     { title: 'Opérations', items: [
       { href: '/validation', label: 'Validation des heures', icon: '✅', badge: pending ?? 0 },
