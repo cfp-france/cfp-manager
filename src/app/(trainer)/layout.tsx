@@ -17,6 +17,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     { title: 'Mon espace', items: [
       { href: '/home', label: 'Accueil', icon: '🏠' },
       { href: '/sessions', label: 'Saisir mes séances', icon: '⏱', badge: toSubmit },
+      { href: '/declare-session', label: 'Déclarer une séance', icon: '➕' },
       { href: '/earnings', label: 'Mes rémunérations', icon: '💰' },
       { href: '/absence', label: 'Déclarer une absence', icon: '🚫' },
     ]},

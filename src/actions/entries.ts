@@ -62,3 +62,80 @@ export async function refuseEntry(formData: FormData) {
   await s.from('time_entries').update({ status: 'refused', admin_comment: motif }).eq('id', entry_id)
   revalidatePath('/validation')
 }
+
+/**
+ * Déclaration d'une séance hors planning par le formateur.
+ * Crée une mission_session (self_declared=true) + une time_entry (status='submitted')
+ * qui iront dans la file de validation admin.
+ */
+export async function declareSession(formData: FormData) {
+  const s = createClient()
+  const { data: { user } } = await s.auth.getUser()
+  if (!user) return
+  const { data: trainer } = await s.from('trainers').select('id').eq('user_id', user.id).single()
+  if (!trainer) return
+
+  const cfa_id = formData.get('cfa_id') as string
+  const mission_id = (formData.get('mission_id') as string) || null
+  const session_date = formData.get('session_date') as string
+  const start_time = formData.get('start_time') as string
+  const end_time = formData.get('end_time') as string
+  const break_minutes = Number(formData.get('break_minutes') ?? 60)
+  const room = (formData.get('room') as string) || null
+
+  if (!cfa_id || !session_date || !start_time || !end_time) return
+
+  // 1. Créer la mission_session avec self_declared=true
+  const { data: session, error: sessErr } = await s.from('mission_sessions').insert({
+    cfa_id,
+    mission_id,
+    session_date,
+    start_time,
+    end_time,
+    break_minutes,
+    room,
+    trainer_id: trainer.id,
+    self_declared: true,
+    declared_by_trainer_id: trainer.id,
+    status: 'realized',
+  }).select('id').single()
+
+  if (sessErr || !session) { console.error('declareSession session error:', sessErr); return }
+
+  // 2. Créer le time_entry lié (status='submitted' → visible dans la file admin)
+  const blocks = formData.getAll('blocks').map((v) => Number(v))
+  const skill_ids = formData.getAll('skills').map((v) => String(v))
+
+  await s.from('time_entries').insert({
+    session_id: session.id,
+    trainer_id: trainer.id,
+    work_date: session_date,
+    actual_start: start_time,
+    actual_end: end_time,
+    break_minutes,
+    competence_blocks_targeted: blocks,
+    skill_ids,
+    content_covered: (formData.get('content_covered') as string) || null,
+    pedagogical_supports: (formData.get('pedagogical_supports') as string) || null,
+    work_done: (formData.get('work_done') as string) || null,
+    points_to_review: (formData.get('points_to_review') as string) || null,
+    program_completion: formData.get('program_completion') ? Number(formData.get('program_completion')) : null,
+    trainer_comment: (formData.get('trainer_comment') as string) || null,
+    status: 'submitted',
+  })
+
+  revalidatePath('/sessions'); revalidatePath('/home'); revalidatePath('/validation')
+  redirect('/sessions?declared=1')
+}
+
+/**
+ * Admin : rattacher une séance auto-déclarée à une mission existante (pendant la validation)
+ */
+export async function attachSessionToMission(formData: FormData) {
+  const s = createClient()
+  const session_id = formData.get('session_id') as string
+  const mission_id = (formData.get('mission_id') as string) || null
+  if (!session_id) return
+  await s.from('mission_sessions').update({ mission_id }).eq('id', session_id)
+  revalidatePath('/validation')
+}
