@@ -55,6 +55,24 @@ export async function validateEntry(formData: FormData) {
   revalidatePath('/validation'); revalidatePath('/dashboard')
 }
 
+/**
+ * Dévalide une saisie précédemment validée (si l'admin a validé par erreur).
+ * Remet la saisie en file d'attente avec le statut 'submitted'.
+ */
+export async function unvalidateEntry(formData: FormData) {
+  const s = createClient()
+  const entry_id = formData.get('entry_id') as string
+  if (!entry_id) return
+  await s.from('time_entries').update({
+    status: 'submitted',
+    validated_by: null,
+    validated_at: null,
+    admin_comment: null,
+  }).eq('id', entry_id)
+  revalidatePath('/validation')
+  revalidatePath('/dashboard')
+}
+
 export async function refuseEntry(formData: FormData) {
   const s = createClient()
   const entry_id = formData.get('entry_id') as string
