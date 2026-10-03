@@ -9,6 +9,20 @@ export async function getSessionUser() {
   return { user, profile, supabase }
 }
 
+/**
+ * Guard global : vérifie que le profil est approuvé par un admin.
+ * Un admin reste toujours accessible, même si son approval_status n'est pas 'approved'
+ * (sinon on s'auto-bloque après la migration si l'ordre varie).
+ */
+function enforceApproval(profile: any) {
+  if (!profile) return
+  const isAdmin = profile.role === 'admin' || profile.role === 'coordinator'
+  if (isAdmin) return
+  if (profile.approval_status === 'approved') return
+  if (profile.approval_status === 'rejected') redirect('/pending-approval?rejected=1')
+  redirect('/pending-approval')
+}
+
 export async function requireAdmin() {
   const ctx = await getSessionUser()
   if (ctx.profile?.role !== 'admin' && ctx.profile?.role !== 'coordinator') redirect('/')
@@ -18,6 +32,7 @@ export async function requireAdmin() {
 export async function requireTrainer() {
   const ctx = await getSessionUser()
   if (ctx.profile?.role !== 'trainer') redirect('/')
+  enforceApproval(ctx.profile)
   const { data: trainer } = await ctx.supabase.from('trainers').select('*').eq('user_id', ctx.user.id).single()
   return { ...ctx, trainer }
 }

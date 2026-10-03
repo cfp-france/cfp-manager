@@ -23,7 +23,7 @@ export default function LoginPage() {
       } else {
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) throw error
-        setMsg('Compte créé. Vous pouvez maintenant vous connecter.')
+        setMsg('Compte créé. Votre inscription doit être approuvée par un administrateur avant de pouvoir accéder à la plateforme.')
         setMode('login')
       }
     } catch (e: any) { setMsg(e.message) }
@@ -58,7 +58,7 @@ export default function LoginPage() {
             {loading ? '…' : (mode==='login' ? 'Se connecter' : 'Créer mon compte')}
           </button>
           <p className="text-[11px] text-gray-500 text-center">
-            {mode==='signup' ? 'Le compte est créé avec le rôle Formateur par défaut. Un admin peut ensuite modifier le rôle.' : 'Contactez votre administrateur si vous ne pouvez pas vous connecter.'}
+            {mode==='signup' ? 'Après inscription, votre compte doit être approuvé par un administrateur CFP avant utilisation.' : 'Contactez votre administrateur si vous ne pouvez pas vous connecter.'}
           </p>
         </form>
       </div>
