@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { updateTrainer, toggleTrainerActive, unlinkTrainerFromUser, linkTrainerToUser } from '@/actions/referentials'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { DocumentsPanel } from '@/components/DocumentsPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,6 +106,11 @@ export default async function EditTrainerPage({ params }: { params: { id: string
             </form>
           )}
         </div>
+      </div>
+
+      <div className="mt-4">
+        {/* @ts-expect-error async server component */}
+        <DocumentsPanel trainerId={trainer.id} />
       </div>
     </div>
   )

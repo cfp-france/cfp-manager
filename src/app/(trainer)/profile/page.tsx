@@ -1,6 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { requireTrainer } from '@/lib/utils'
 import { updateMyTrainerProfile } from '@/actions/trainer-profile'
+import { DocumentsPanel } from '@/components/DocumentsPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -86,6 +87,11 @@ export default async function TrainerProfilePage({ searchParams }: { searchParam
           <button className="btn btn-primary">💾 Enregistrer mon profil</button>
         </div>
       </form>
+
+      <div className="mt-5">
+        {/* @ts-expect-error async server component */}
+        <DocumentsPanel trainerId={t.id} />
+      </div>
     </div>
   )
 }
