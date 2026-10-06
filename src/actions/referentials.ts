@@ -89,6 +89,12 @@ export async function updateTrainer(formData: FormData) {
     phone: p.phone || null,
     siret: p.siret || null,
     nda: p.nda || null,
+    legal_status: p.legal_status || null,
+    company_name: p.company_name || null,
+    vat_number: p.vat_number || null,
+    billing_address: p.billing_address || null,
+    iban: p.iban || null,
+    bic: p.bic || null,
     hourly_rate_default: p.hourly_rate_default ? Number(p.hourly_rate_default) : null,
     specialties,
   }).eq('id', id)
