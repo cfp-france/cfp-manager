@@ -62,3 +62,14 @@ export async function getSignedDocUrl(storage_path: string) {
   const { data } = await s.storage.from('trainer-docs').createSignedUrl(storage_path, 600)
   return data?.signedUrl ?? null
 }
+
+/** Action formulaire : redirige vers l'URL signée. */
+export async function downloadDocAction(formData: FormData) {
+  const path = formData.get('path') as string
+  if (!path) return
+  const url = await getSignedDocUrl(path)
+  if (url) {
+    const { redirect } = await import('next/navigation')
+    redirect(url)
+  }
+}

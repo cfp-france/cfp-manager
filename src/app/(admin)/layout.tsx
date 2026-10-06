@@ -5,11 +5,12 @@ import { createClient } from '@/lib/supabase/server'
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { profile } = await requireAdmin()
   const s = createClient()
-  const [{ count: pending }, { count: absPending }, { count: subsPending }, { count: approvalsPending }] = await Promise.all([
+  const [{ count: pending }, { count: absPending }, { count: subsPending }, { count: approvalsPending }, { count: invoicesPending }] = await Promise.all([
     s.from('time_entries').select('*', { count: 'exact', head: true }).eq('status', 'submitted'),
     s.from('trainer_absences').select('*', { count: 'exact', head: true }).eq('status', 'submitted'),
     s.from('mission_sessions').select('*', { count: 'exact', head: true }).eq('needs_substitution', true),
     s.from('profiles').select('*', { count: 'exact', head: true }).eq('approval_status', 'pending'),
+    s.from('trainer_invoices').select('*', { count: 'exact', head: true }).in('status', ['sent','draft']),
   ])
 
   const sections = [
@@ -29,6 +30,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       { href: '/absences', label: 'Absences déclarées', icon: '🚫', badge: absPending ?? 0 },
       { href: '/substitutions', label: 'Remplacements', icon: '🔄', badge: subsPending ?? 0 },
       { href: '/pedagogy', label: 'Suivi pédagogique', icon: '🎓' },
+      { href: '/invoicing', label: 'Facturation', icon: '🧾', badge: invoicesPending ?? 0 },
     ]},
   ]
 

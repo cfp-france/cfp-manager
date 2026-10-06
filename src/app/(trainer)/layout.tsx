@@ -19,6 +19,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       { href: '/sessions', label: 'Saisir mes séances', icon: '⏱', badge: toSubmit },
       { href: '/declare-session', label: 'Déclarer une séance', icon: '➕' },
       { href: '/earnings', label: 'Mes rémunérations', icon: '💰' },
+      { href: '/invoices', label: 'Mes factures', icon: '🧾' },
       { href: '/absence', label: 'Déclarer une absence', icon: '🚫' },
       { href: '/profile', label: 'Mon profil', icon: '🪪' },
     ]},

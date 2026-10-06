@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { uploadMyDocument, deleteMyDocument } from '@/actions/documents'
+import { uploadMyDocument, deleteMyDocument, downloadDocAction } from '@/actions/documents'
 
 const DOC_LABELS: Record<string, string> = {
   cv: '📄 CV',
@@ -70,7 +70,8 @@ export async function DocumentsPanel({ trainerId, readOnly = false }: { trainerI
                   </div>
                 </div>
                 <div className="flex gap-1 flex-shrink-0">
-                  <form action={async () => { 'use server'; const { getSignedDocUrl } = await import('@/actions/documents'); const url = await getSignedDocUrl(d.storage_path); if (url) { const { redirect } = await import('next/navigation'); redirect(url) } }}>
+                  <form action={downloadDocAction}>
+                    <input type="hidden" name="path" value={d.storage_path} />
                     <button className="btn btn-sm btn-outline" title="Télécharger">⬇</button>
                   </form>
                   {!readOnly && (
