@@ -40,19 +40,17 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
   // Liste des CFA pour le filtre
   const { data: cfas } = await s.from('cfa').select('id, name').is('archived_at', null).order('name')
 
-  // Entrées validées sur la période
-  let query = s.from('time_entries')
+  // Entrées validées sur la période (on charge aussi le tarif par défaut du CFA pour fallback)
+  const { data: entriesRaw } = await s.from('time_entries')
     .select(`id, hours_actual, status, work_date, validated_at, session_id, trainer_id,
-      trainer:trainers(first_name, last_name),
+      trainer:trainers(first_name, last_name, hourly_rate_default),
       session:mission_sessions(mission_id, cfa_id,
-        mission:missions(name, cfa_hourly_rate, trainer_hourly_rate, cfa:cfa(id, name)),
-        cfa:cfa(id, name))`)
+        mission:missions(name, cfa_hourly_rate, trainer_hourly_rate, cfa:cfa(id, name, default_hourly_rate)),
+        cfa:cfa(id, name, default_hourly_rate))`)
     .eq('status', 'validated')
     .gte('work_date', from)
     .lte('work_date', to)
     .order('work_date', { ascending: false })
-
-  const { data: entriesRaw } = await query
 
   // Filtre CFA côté app (parce que cfa_id est sur mission OU sur session)
   const entries = (entriesRaw ?? []).filter((e: any) => {
@@ -65,9 +63,14 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
   for (const e of entries) {
     const h = Number(e.hours_actual ?? 0)
     const m: any = e.session?.mission
+    const cfa: any = m?.cfa ?? e.session?.cfa
+    // Priorité : tarif mission → tarif CFA par défaut → 0
+    const cfaRate = Number(m?.cfa_hourly_rate) || Number(cfa?.default_hourly_rate) || 0
+    // Priorité : tarif mission → tarif formateur par défaut → 0
+    const trainerRate = Number(m?.trainer_hourly_rate) || Number(e.trainer?.hourly_rate_default) || 0
     totalHours += h
-    ca += h * Number(m?.cfa_hourly_rate ?? 0)
-    cost += h * Number(m?.trainer_hourly_rate ?? 0)
+    ca += h * cfaRate
+    cost += h * trainerRate
   }
   const margin = ca - cost
   const marginRate = ca > 0 ? Math.round((margin / ca) * 100) : 0
