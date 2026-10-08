@@ -20,22 +20,29 @@ export default async function MissionsPage() {
         <table className="w-full">
           <thead><tr>
             <th>Nom</th><th>CFA</th><th>Formation</th><th>Période</th>
-            <th>Séances</th><th>Tarifs (CFA / Formateur)</th><th></th>
+            <th>Séances</th><th>Tarifs (CFA / Formateur)</th><th>Statut</th><th></th>
           </tr></thead>
           <tbody>
             {missions?.map((m: any) => (
               <tr key={m.id}>
-                <td className="font-semibold">{m.name}</td>
+                <td className="font-semibold">
+                  <Link href={`/missions/${m.id}`} className="text-brand hover:underline">{m.name}</Link>
+                </td>
                 <td>{m.cfa?.name}</td>
                 <td>{m.formations?.code ?? '—'}</td>
                 <td className="text-xs">{fmtDate(m.start_date)} → {fmtDate(m.end_date)}</td>
                 <td>{m.mission_sessions?.length ?? 0}</td>
                 <td className="text-xs">{m.cfa_hourly_rate}€ / {m.trainer_hourly_rate}€</td>
-                <td><span className="status status-active">Active</span></td>
+                <td>
+                  {m.archived_at
+                    ? <span className="status status-refused">Archivée</span>
+                    : <span className="status status-active">Active</span>}
+                </td>
+                <td><Link href={`/missions/${m.id}`} className="btn btn-sm btn-outline">Modifier</Link></td>
               </tr>
             ))}
             {(!missions || missions.length === 0) && (
-              <tr><td colSpan={7} className="text-center text-gray-500 py-8">
+              <tr><td colSpan={8} className="text-center text-gray-500 py-8">
                 Aucune mission. <Link href="/missions/new" className="text-brand underline">Créer une mission</Link>
               </td></tr>
             )}

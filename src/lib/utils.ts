@@ -33,7 +33,25 @@ export async function requireTrainer() {
   const ctx = await getSessionUser()
   if (ctx.profile?.role !== 'trainer') redirect('/')
   enforceApproval(ctx.profile)
-  const { data: trainer } = await ctx.supabase.from('trainers').select('*').eq('user_id', ctx.user.id).single()
+  let { data: trainer } = await ctx.supabase.from('trainers').select('*').eq('user_id', ctx.user.id).maybeSingle()
+
+  // Filet de sécurité : si le formateur est approuvé mais que sa fiche n'existe pas
+  // (ancien compte créé avant l'automatisation), on la crée à la volée pour qu'il
+  // puisse immédiatement saisir ses heures.
+  if (!trainer && ctx.profile?.approval_status === 'approved') {
+    const email = ctx.profile?.email ?? ctx.user.email ?? ''
+    const first = ctx.profile?.first_name || (email.split('@')[0] || 'Formateur')
+    const last = ctx.profile?.last_name || ''
+    const { data: created } = await ctx.supabase.from('trainers').insert({
+      user_id: ctx.user.id,
+      first_name: first,
+      last_name: last,
+      email: email || null,
+      active: true,
+    }).select('*').single()
+    trainer = created ?? null
+  }
+
   return { ...ctx, trainer }
 }
 

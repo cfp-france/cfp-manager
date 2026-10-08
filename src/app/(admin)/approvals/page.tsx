@@ -25,35 +25,42 @@ export default async function ApprovalsPage() {
           <div className="card-title">⏳ Comptes en attente ({pending?.length ?? 0})</div>
         </div>
         <div className="card-body space-y-3">
-          {(pending ?? []).map((p: any) => (
-            <div key={p.id} className="border-l-4 border-amber-500 bg-amber-50 rounded p-3">
-              <div className="flex justify-between items-start gap-3 flex-wrap">
-                <div className="flex-1 min-w-[200px]">
-                  <div className="font-semibold">{p.email}</div>
-                  <div className="text-xs text-gray-600">
-                    Inscrit le {p.created_at ? fmtDate(p.created_at) : '—'}
-                    {p.first_name && ` · ${p.first_name} ${p.last_name ?? ''}`}
-                  </div>
+          {(pending ?? []).map((p: any) => {
+            const guessedFirst = p.first_name || ((p.email?.split('@')[0] ?? '').replace(/[._-]+/g, ' ').split(' ')[0] ?? '')
+            return (
+              <div key={p.id} className="border-l-4 border-amber-500 bg-amber-50 rounded p-3">
+                <div className="font-semibold text-sm mb-1">{p.email}</div>
+                <div className="text-[11px] text-gray-600 mb-2">
+                  Inscrit le {p.created_at ? fmtDate(p.created_at) : '—'}
                 </div>
-                <div className="flex flex-col md:flex-row gap-2 items-stretch md:items-center">
-                  <form action={approveProfile} className="flex gap-2 items-center">
-                    <input type="hidden" name="profile_id" value={p.id} />
-                    <select name="role" defaultValue="trainer" className="text-xs border rounded px-2 py-1">
+                <form action={approveProfile} className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end mb-2 bg-white p-2 rounded">
+                  <input type="hidden" name="profile_id" value={p.id} />
+                  <div className="field mb-0">
+                    <label className="text-[11px] font-semibold text-navy">Prénom</label>
+                    <input name="first_name" defaultValue={guessedFirst} className="text-xs border rounded px-2 py-1 w-full" />
+                  </div>
+                  <div className="field mb-0">
+                    <label className="text-[11px] font-semibold text-navy">Nom</label>
+                    <input name="last_name" defaultValue={p.last_name ?? ''} className="text-xs border rounded px-2 py-1 w-full" />
+                  </div>
+                  <div className="field mb-0">
+                    <label className="text-[11px] font-semibold text-navy">Rôle</label>
+                    <select name="role" defaultValue="trainer" className="text-xs border rounded px-2 py-1 w-full">
                       <option value="trainer">Formateur</option>
                       <option value="coordinator">Coordinateur</option>
                       <option value="admin">Administrateur</option>
                     </select>
-                    <button className="btn btn-sm btn-success">✓ Approuver</button>
-                  </form>
-                  <form action={rejectProfile} className="flex gap-2 items-center">
-                    <input type="hidden" name="profile_id" value={p.id} />
-                    <input name="reason" placeholder="Motif (optionnel)" className="text-xs border rounded px-2 py-1 w-40" />
-                    <button className="btn btn-sm btn-danger">✗ Refuser</button>
-                  </form>
-                </div>
+                  </div>
+                  <button className="btn btn-sm btn-success md:col-span-2">✓ Approuver &amp; créer la fiche</button>
+                </form>
+                <form action={rejectProfile} className="flex gap-2 items-center">
+                  <input type="hidden" name="profile_id" value={p.id} />
+                  <input name="reason" placeholder="Motif de refus (optionnel)" className="text-xs border rounded px-2 py-1 flex-1" />
+                  <button className="btn btn-sm btn-danger">✗ Refuser</button>
+                </form>
               </div>
-            </div>
-          ))}
+            )
+          })}
           {(!pending || pending.length === 0) && (
             <div className="text-center text-gray-500 py-6 text-sm">
               🎉 Aucun compte en attente d'approbation.
