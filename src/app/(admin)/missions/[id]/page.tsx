@@ -12,7 +12,7 @@ export default async function EditMissionPage({ params }: { params: { id: string
 
   const [{ data: mission }, { data: cfas }, { data: formations }] = await Promise.all([
     s.from('missions')
-      .select('*, cfa:cfa(name), mission_sessions(id, session_date, time_entries(id, status))')
+      .select('*, cfa:cfa(name), mission_sessions(id, time_entries(id, status))')
       .eq('id', params.id).single(),
     s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
     s.from('formations').select('id, code, name').is('archived_at', null).order('name'),

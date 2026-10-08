@@ -56,6 +56,37 @@ export async function validateEntry(formData: FormData) {
 }
 
 /**
+ * Change le CFA de la mission liée à une saisie (correction d'erreur par l'admin
+ * depuis la page Validation). Applique le changement sur toutes les séances de
+ * la mission pour que la facturation CFA pointe au bon endroit.
+ * Si la saisie est une séance hors planning (pas de mission), change juste le CFA
+ * de la séance elle-même.
+ */
+export async function changeEntryCfa(formData: FormData) {
+  const s = createClient()
+  const entry_id = formData.get('entry_id') as string
+  const new_cfa_id = formData.get('cfa_id') as string
+  if (!entry_id || !new_cfa_id) return
+
+  // Récupérer la séance et sa mission
+  const { data: entry } = await s.from('time_entries')
+    .select('session_id, session:mission_sessions(id, mission_id)')
+    .eq('id', entry_id).single()
+  if (!entry) return
+
+  const se: any = entry.session
+  if (se?.mission_id) {
+    // Cas 1 : mission planifiée → change le CFA de la mission + propage aux séances
+    await s.from('missions').update({ cfa_id: new_cfa_id }).eq('id', se.mission_id)
+    await s.from('mission_sessions').update({ cfa_id: new_cfa_id }).eq('mission_id', se.mission_id)
+  } else if (se?.id) {
+    // Cas 2 : séance hors planning → change juste le CFA de la séance
+    await s.from('mission_sessions').update({ cfa_id: new_cfa_id }).eq('id', se.id)
+  }
+  revalidatePath('/validation')
+}
+
+/**
  * Dévalide une saisie précédemment validée (si l'admin a validé par erreur).
  * Remet la saisie en file d'attente avec le statut 'submitted'.
  */

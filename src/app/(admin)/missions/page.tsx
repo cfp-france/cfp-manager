@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic'
 
 export default async function MissionsPage() {
   const s = createClient()
-  const { data: missions } = await s.from('missions')
-    .select('*, cfa(name), formations(code, name), mission_sessions(id, session_date, status)')
+  const { data: missions, error } = await s.from('missions')
+    .select('id, name, cfa_id, formation_id, start_date, end_date, cfa_hourly_rate, trainer_hourly_rate, archived_at, cfa:cfa(name), formation:formations(code, name), mission_sessions(id)')
     .order('start_date', { ascending: false })
+  if (error) console.error('[missions list]', error)
 
   return (
     <div>
@@ -29,7 +30,7 @@ export default async function MissionsPage() {
                   <Link href={`/missions/${m.id}`} className="text-brand hover:underline">{m.name}</Link>
                 </td>
                 <td>{m.cfa?.name}</td>
-                <td>{m.formations?.code ?? '—'}</td>
+                <td>{m.formation?.code ?? '—'}</td>
                 <td className="text-xs">{fmtDate(m.start_date)} → {fmtDate(m.end_date)}</td>
                 <td>{m.mission_sessions?.length ?? 0}</td>
                 <td className="text-xs">{m.cfa_hourly_rate}€ / {m.trainer_hourly_rate}€</td>

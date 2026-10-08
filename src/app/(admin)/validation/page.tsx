@@ -1,7 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtHours } from '@/lib/utils'
-import { validateEntry, refuseEntry, attachSessionToMission } from '@/actions/entries'
+import { validateEntry, refuseEntry, attachSessionToMission, changeEntryCfa } from '@/actions/entries'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,14 +13,20 @@ export default async function ValidationPage() {
       session:mission_sessions(
         id, session_date, start_time, end_time, hours_planned,
         self_declared, cfa_id, mission_id, room,
-        mission:missions(name, cfa:cfa(name)),
-        cfa:cfa(name, city)
+        mission:missions(id, name, cfa:cfa(id, name)),
+        cfa:cfa(id, name, city)
       )`)
     .eq('status', 'submitted').order('work_date', { ascending: true })
 
   // Charger toutes les missions actives pour permettre le rattachement
   const { data: allMissions } = await s.from('missions')
     .select('id, name, cfa_id')
+    .is('archived_at', null)
+    .order('name')
+
+  // Charger tous les CFA actifs pour permettre la correction du CFA
+  const { data: allCfas } = await s.from('cfa')
+    .select('id, name, city')
     .is('archived_at', null)
     .order('name')
 
@@ -43,6 +49,7 @@ export default async function ValidationPage() {
           const cfaName = e.session?.mission?.cfa?.name ?? e.session?.cfa?.name ?? '—'
           const missionName = e.session?.mission?.name
           const availableMissionsForCfa = (allMissions ?? []).filter((m: any) => m.cfa_id === e.session?.cfa_id)
+          const currentCfaId = e.session?.mission?.cfa?.id ?? e.session?.cfa?.id ?? e.session?.cfa_id ?? ''
 
           return (
             <div key={e.id} className={`card ${isSelfDeclared ? 'border-l-4 border-l-amber-500' : ''}`}>
@@ -91,6 +98,23 @@ export default async function ValidationPage() {
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-navy mb-2">Actions</div>
+
+                  {/* Correction du CFA (si erreur de saisie du formateur) */}
+                  <form action={changeEntryCfa} className="mb-2 border border-blue-200 bg-blue-50 rounded p-2">
+                    <input type="hidden" name="entry_id" value={e.id} />
+                    <label className="text-[11px] font-semibold text-blue-800 block mb-1">
+                      Changer le CFA {e.session?.mission_id ? '(mission + séances)' : '(cette séance)'} :
+                    </label>
+                    <div className="flex gap-1">
+                      <select name="cfa_id" defaultValue={currentCfaId} className="text-xs border rounded px-1 py-1 flex-1" required>
+                        {(allCfas ?? []).map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.name}{c.city ? ` (${c.city})` : ''}</option>
+                        ))}
+                      </select>
+                      <button className="btn btn-sm btn-outline">Appliquer</button>
+                    </div>
+                  </form>
+
                   {isSelfDeclared && !e.session?.mission_id && availableMissionsForCfa.length > 0 && (
                     <form action={attachSessionToMission} className="mb-2 border border-amber-200 bg-amber-50 rounded p-2">
                       <input type="hidden" name="session_id" value={e.session?.id} />
