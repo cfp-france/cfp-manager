@@ -16,6 +16,7 @@ export async function createCfa(formData: FormData) {
     pedagogic_contact: p.pedagogic_contact || null,
     admin_contact: p.admin_contact || null,
     billing_notes: p.billing_notes || null,
+    default_hourly_rate: p.default_hourly_rate ? Number(p.default_hourly_rate) : null,
   })
   revalidatePath('/cfa')
 }
@@ -35,6 +36,7 @@ export async function updateCfa(formData: FormData) {
     pedagogic_contact: p.pedagogic_contact || null,
     admin_contact: p.admin_contact || null,
     billing_notes: p.billing_notes || null,
+    default_hourly_rate: p.default_hourly_rate ? Number(p.default_hourly_rate) : null,
   }).eq('id', id)
   revalidatePath('/cfa')
   revalidatePath(`/cfa/${id}`)

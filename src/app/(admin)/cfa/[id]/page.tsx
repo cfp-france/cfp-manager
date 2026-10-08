@@ -35,6 +35,11 @@ export default async function EditCfaPage({ params }: { params: { id: string } }
           <div className="field"><label>Contact pédagogique</label><input name="pedagogic_contact" defaultValue={cfa.pedagogic_contact ?? ''} /></div>
           <div className="field"><label>Contact administratif</label><input name="admin_contact" defaultValue={cfa.admin_contact ?? ''} /></div>
           <div className="field md:col-span-2">
+            <label>Tarif horaire par défaut (€ HT / h)</label>
+            <input name="default_hourly_rate" type="number" step="0.01" defaultValue={cfa.default_hourly_rate ?? ''} placeholder="Ex : 65.00" />
+            <p className="text-[11px] text-gray-500 mt-1">Utilisé si une mission n'a pas son propre tarif, ou pour pré-remplir les nouvelles missions.</p>
+          </div>
+          <div className="field md:col-span-2">
             <label>Notes internes / conditions de facturation</label>
             <textarea name="billing_notes" rows={3} defaultValue={cfa.billing_notes ?? ''} />
           </div>

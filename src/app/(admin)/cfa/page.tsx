@@ -23,6 +23,11 @@ export default async function CfaPage() {
           <div className="field md:col-span-2"><label>Adresse</label><input name="address" /></div>
           <div className="field"><label>Contact pédagogique</label><input name="pedagogic_contact" /></div>
           <div className="field"><label>Contact administratif</label><input name="admin_contact" /></div>
+          <div className="field md:col-span-2">
+            <label>Tarif horaire par défaut (€ HT / h)</label>
+            <input name="default_hourly_rate" type="number" step="0.01" placeholder="Ex : 65.00" />
+            <p className="text-[11px] text-gray-500 mt-1">Facultatif — utilisé par la facturation si une mission n'a pas son propre tarif.</p>
+          </div>
           <div className="md:col-span-2"><button className="btn btn-primary">Créer le CFA</button></div>
         </form>
       </div>

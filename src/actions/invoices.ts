@@ -155,6 +155,10 @@ export async function generateCfaInvoice(formData: FormData) {
     .select('id').eq('cfa_id', cfa_id).eq('period_year', year).eq('period_month', month).maybeSingle()
   if (existing) redirect(`/invoicing/cfa/${existing.id}`)
 
+  // Récupérer le tarif par défaut du CFA (fallback)
+  const { data: cfaRow } = await s.from('cfa').select('default_hourly_rate').eq('id', cfa_id).single()
+  const cfaDefaultRate = Number(cfaRow?.default_hourly_rate ?? 0)
+
   // Récupérer heures validées pour ce CFA sur la période, non encore facturées côté CFA
   const { data: entries } = await s.from('time_entries')
     .select(`id, work_date, hours_actual,
@@ -175,7 +179,8 @@ export async function generateCfaInvoice(formData: FormData) {
   let totalHours = 0, totalHt = 0
   const lines = filtered.map((e: any) => {
     const h = Number(e.hours_actual ?? 0)
-    const rate = Number(e.session?.mission?.cfa_hourly_rate ?? 0)
+    // Priorité : tarif mission → tarif CFA par défaut → 0
+    const rate = Number(e.session?.mission?.cfa_hourly_rate) || cfaDefaultRate
     const amt = Math.round(h * rate * 100) / 100
     totalHours += h; totalHt += amt
     return {
