@@ -6,50 +6,50 @@ import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
 export default async function MissionsPage() {
-  const s = createClient()
-  const { data: missions, error } = await s.from('missions')
-    .select('id, name, cfa_id, formation_id, start_date, end_date, cfa_hourly_rate, trainer_hourly_rate, archived_at, cfa:cfa(name), formation:formations(code, name), mission_sessions(id)')
-    .order('start_date', { ascending: false })
-  if (error) console.error('[missions list]', error)
+ const s = createClient()
+ const { data: missions, error } = await s.from('missions')
+ .select('id, name, cfa_id, formation_id, start_date, end_date, cfa_hourly_rate, trainer_hourly_rate, archived_at, cfa:cfa(name), formation:formations(code, name), mission_sessions(id)')
+ .order('start_date', { ascending: false })
+ if (error) console.error('[missions list]', error)
 
-  return (
-    <div>
-      <PageHeader title="Missions" subtitle={`${missions?.length ?? 0} missions`}
-        actions={<Link href="/missions/new" className="btn btn-primary">+ Nouvelle mission</Link>} />
+ return (
+ <div>
+ <PageHeader title="Missions" subtitle={`${missions?.length ?? 0} missions`}
+ actions={<Link href="/missions/new" className="btn btn-primary">+ Nouvelle mission</Link>} />
 
-      <div className="card">
-        <table className="w-full">
-          <thead><tr>
-            <th>Nom</th><th>CFA</th><th>Formation</th><th>Période</th>
-            <th>Séances</th><th>Tarifs (CFA / Formateur)</th><th>Statut</th><th></th>
-          </tr></thead>
-          <tbody>
-            {missions?.map((m: any) => (
-              <tr key={m.id}>
-                <td className="font-semibold">
-                  <Link href={`/missions/${m.id}`} className="text-brand hover:underline">{m.name}</Link>
-                </td>
-                <td>{m.cfa?.name}</td>
-                <td>{m.formation?.code ?? '—'}</td>
-                <td className="text-xs">{fmtDate(m.start_date)} → {fmtDate(m.end_date)}</td>
-                <td>{m.mission_sessions?.length ?? 0}</td>
-                <td className="text-xs">{m.cfa_hourly_rate}€ / {m.trainer_hourly_rate}€</td>
-                <td>
-                  {m.archived_at
-                    ? <span className="status status-refused">Archivée</span>
-                    : <span className="status status-active">Active</span>}
-                </td>
-                <td><Link href={`/missions/${m.id}`} className="btn btn-sm btn-outline">Modifier</Link></td>
-              </tr>
-            ))}
-            {(!missions || missions.length === 0) && (
-              <tr><td colSpan={8} className="text-center text-gray-500 py-8">
-                Aucune mission. <Link href="/missions/new" className="text-brand underline">Créer une mission</Link>
-              </td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
+ <div className="card">
+ <table className="w-full">
+ <thead><tr>
+ <th>Nom</th><th>CFA</th><th>Formation</th><th>Période</th>
+ <th>Séances</th><th>Tarifs (CFA / Formateur)</th><th>Statut</th><th></th>
+ </tr></thead>
+ <tbody>
+ {missions?.map((m: any) => (
+ <tr key={m.id}>
+ <td className="font-semibold">
+ <Link href={`/missions/${m.id}`} className="text-brand hover:underline">{m.name}</Link>
+ </td>
+ <td>{m.cfa?.name}</td>
+ <td>{m.formation?.code ?? '—'}</td>
+ <td className="text-xs">{fmtDate(m.start_date)} → {fmtDate(m.end_date)}</td>
+ <td>{m.mission_sessions?.length ?? 0}</td>
+ <td className="text-xs">{m.cfa_hourly_rate}€ / {m.trainer_hourly_rate}€</td>
+ <td>
+ {m.archived_at
+ ? <span className="status status-refused">Archivée</span>
+ : <span className="status status-active">Active</span>}
+ </td>
+ <td><Link href={`/missions/${m.id}`} className="btn btn-sm btn-outline">Modifier</Link></td>
+ </tr>
+ ))}
+ {(!missions || missions.length === 0) && (
+ <tr><td colSpan={8} className="text-center text-gray-500 py-8">
+ Aucune mission. <Link href="/missions/new" className="text-brand underline">Créer une mission</Link>
+ </td></tr>
+ )}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ )
 }
