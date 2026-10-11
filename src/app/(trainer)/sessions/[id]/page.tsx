@@ -2,8 +2,10 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtHours, requireTrainer } from '@/lib/utils'
 import { submitTimeEntry } from '@/actions/entries'
+import { updateMySession } from '@/actions/sessions'
 import { notFound } from 'next/navigation'
 import { PedagogyPicker } from '@/components/PedagogyPicker'
+import { SessionDocuments } from '@/components/SessionDocuments'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,8 +50,29 @@ export default async function SessionEditPage({ params }: { params: { id: string
  <PageHeader title={`Saisir la séance du ${fmtDate(session.session_date)}`}
  subtitle={`${session.mission?.cfa?.name} · ${session.mission?.name} · Prévu ${session.start_time?.slice(0,5)}-${session.end_time?.slice(0,5)} (${fmtHours(Number(session.hours_planned))})`} />
 
- {disabled && <div className="bg-green-50 border-l-4 border-green-500 p-3 rounded mb-4 text-sm"> Cette saisie a été validée par l'administration et ne peut plus être modifiée.</div>}
- {existing?.status === 'refused' && <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded mb-4 text-sm"> Refusée. Motif : {existing.admin_comment}. Vous pouvez re-soumettre.</div>}
+ {disabled && <div className="bg-green-50 border-l-4 border-green-500 p-3 rounded mb-4 text-sm">Cette saisie a été validée par l'administration et ne peut plus être modifiée.</div>}
+ {existing?.status === 'refused' && <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded mb-4 text-sm">Refusée. Motif : {existing.admin_comment}. Vous pouvez re-soumettre.</div>}
+
+ {/* Édition date/horaires/salle de la séance */}
+ <form action={updateMySession} className="card mb-5">
+ <input type="hidden" name="session_id" value={session.id} />
+ <div className="card-header">
+ <div>
+ <div className="card-title">Date, horaires et salle</div>
+ <div className="text-xs text-gray-500 mt-0.5">Corrigez ces infos si la séance a eu lieu à un autre moment. Toute modification repasse la saisie validée en « à re-valider » par l'admin.</div>
+ </div>
+ </div>
+ <div className="card-body grid grid-cols-2 md:grid-cols-5 gap-3">
+ <div className="field"><label>Date</label><input name="session_date" type="date" defaultValue={session.session_date} required /></div>
+ <div className="field"><label>Heure début</label><input name="start_time" type="time" defaultValue={session.start_time?.slice(0,5)} required /></div>
+ <div className="field"><label>Heure fin</label><input name="end_time" type="time" defaultValue={session.end_time?.slice(0,5)} required /></div>
+ <div className="field"><label>Pause (min)</label><input name="break_minutes" type="number" defaultValue={session.break_minutes} /></div>
+ <div className="field"><label>Salle</label><input name="room" defaultValue={session.room ?? ''} /></div>
+ <div className="md:col-span-5 flex justify-end">
+ <button className="btn btn-sm btn-outline">Enregistrer les horaires</button>
+ </div>
+ </div>
+ </form>
 
  <form action={submitTimeEntry} className="space-y-5">
  <input type="hidden" name="session_id" value={session.id} />
@@ -95,10 +118,15 @@ export default async function SessionEditPage({ params }: { params: { id: string
  {!disabled && (
  <div className="flex justify-end gap-2">
  <button name="draft" value="1" className="btn btn-outline">Enregistrer en brouillon</button>
- <button className="btn btn-primary"> Soumettre pour validation</button>
+ <button className="btn btn-primary">Soumettre pour validation</button>
  </div>
  )}
  </form>
+
+ <div className="mt-5">
+ {/* @ts-expect-error async server component */}
+ <SessionDocuments sessionId={session.id} readOnly={disabled} />
+ </div>
  </div>
  )
 }
