@@ -82,6 +82,31 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  s.from('mission_sessions').select('*', { count: 'exact', head: true }).eq('needs_substitution', true),
  ])
 
+ // Planning de la semaine en cours (lundi → dimanche), groupé par CFA
+ const now = new Date()
+ const dow = (now.getDay() + 6) % 7  // 0=lundi
+ const weekStart = new Date(now); weekStart.setDate(now.getDate() - dow)
+ const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6)
+ const weekFromStr = weekStart.toISOString().slice(0,10)
+ const weekToStr = weekEnd.toISOString().slice(0,10)
+
+ const { data: weekSessions } = await s.from('mission_sessions')
+ .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, needs_substitution, mission:missions(name, cfa:cfa(id, name), formation:formations(code, name)), trainer:trainers(first_name, last_name), cfa:cfa(id, name)')
+ .gte('session_date', weekFromStr)
+ .lte('session_date', weekToStr)
+ .order('session_date')
+ .order('start_time')
+
+ // Grouper par CFA
+ const sessionsByCfa: Record<string, { cfaName: string; sessions: any[] }> = {}
+ for (const se of weekSessions ?? []) {
+ const cfaId = (se as any).mission?.cfa?.id ?? (se as any).cfa?.id ?? 'unknown'
+ const cfaName = (se as any).mission?.cfa?.name ?? (se as any).cfa?.name ?? 'Sans CFA'
+ if (!sessionsByCfa[cfaId]) sessionsByCfa[cfaId] = { cfaName, sessions: [] }
+ sessionsByCfa[cfaId].sessions.push(se)
+ }
+ const weekDaysLabels = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
+
  const periodLabel = preset === 'month'
  ? `${MONTHS_FR[mm]} ${yyyy}`
  : preset === 'year' ? `Année ${yyyy}`
@@ -138,6 +163,52 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  <Kpi label="CA généré" value={fmtEuro(ca)} />
  <Kpi label="Coût formateurs" value={fmtEuro(cost)} />
  <Kpi label="Marge brute" value={fmtEuro(margin)} sub={`Taux ${marginRate} %`} />
+ </div>
+
+ {/* Planning de la semaine par CFA */}
+ <div className="card mb-5">
+ <div className="card-header">
+ <div>
+ <div className="card-title">Planning de la semaine ({fmtDate(weekFromStr)} → {fmtDate(weekToStr)})</div>
+ <div className="text-xs text-gray-500 mt-0.5">Groupé par CFA. Les séances sans formateur affecté apparaissent en rouge.</div>
+ </div>
+ </div>
+ <div className="card-body space-y-4">
+ {Object.keys(sessionsByCfa).length === 0 ? (
+ <div className="text-center text-gray-500 py-6 text-sm">Aucune séance planifiée cette semaine.</div>
+ ) : (
+ Object.values(sessionsByCfa).map(group => (
+ <div key={group.cfaName} className="border border-gray-200 rounded-md">
+ <div className="bg-brand-light px-3 py-2 font-semibold text-navy text-sm">{group.cfaName} — {group.sessions.length} séance(s)</div>
+ <table className="w-full text-xs">
+ <thead>
+ <tr><th>Jour</th><th>Date</th><th>Horaires</th><th>Formation</th><th>Mission</th><th>Formateur</th><th>Salle</th></tr>
+ </thead>
+ <tbody>
+ {group.sessions.map((se: any) => {
+ const d = new Date(se.session_date)
+ const dayIdx = (d.getDay() + 6) % 7
+ const noTrainer = !se.trainer_id
+ return (
+ <tr key={se.id} className={noTrainer ? 'bg-red-50' : ''}>
+ <td className="font-semibold">{weekDaysLabels[dayIdx]}</td>
+ <td>{fmtDate(se.session_date)}</td>
+ <td>{se.start_time?.slice(0,5)}-{se.end_time?.slice(0,5)}</td>
+ <td>{se.mission?.formation?.code ?? '—'}</td>
+ <td className="truncate max-w-[180px]">{se.mission?.name ?? '—'}</td>
+ <td className={noTrainer ? 'text-red-700 font-semibold' : ''}>
+ {se.trainer ? `${se.trainer.first_name} ${se.trainer.last_name}` : 'À pourvoir'}
+ </td>
+ <td>{se.room ?? '—'}</td>
+ </tr>
+ )
+ })}
+ </tbody>
+ </table>
+ </div>
+ ))
+ )}
+ </div>
  </div>
 
  {/* Détail des saisies validées sur la période (avec bouton Dévalider) */}

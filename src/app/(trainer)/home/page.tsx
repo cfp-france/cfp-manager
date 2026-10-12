@@ -22,8 +22,8 @@ export default async function TrainerHome() {
 
  const today = new Date().toISOString().slice(0, 10)
  const { data: sessions } = await s.from('mission_sessions')
- .select(`*, mission:missions(name, cfa:cfa(name)), time_entries(id, status, hours_actual)`)
- .eq('trainer_id', trainer.id).order('session_date').limit(20)
+ .select(`*, mission:missions(name, cfa:cfa(name), formation:formations(code, name)), time_entries(id, status, hours_actual)`)
+ .eq('trainer_id', trainer.id).order('session_date').limit(50)
 
  const past = (sessions ?? []).filter((se: any) => se.session_date <= today)
  const upcoming = (sessions ?? []).filter((se: any) => se.session_date > today)
@@ -59,32 +59,44 @@ export default async function TrainerHome() {
  <div className="text-[10px] uppercase">{new Date(se.session_date).toLocaleDateString('fr-FR', { month: 'short' })}</div>
  </div>
  <div className="flex-1 min-w-0">
- <div className="font-semibold text-navy text-sm truncate">{se.mission?.cfa?.name} — {se.mission?.name}</div>
+ <div className="font-semibold text-navy text-sm truncate">{se.mission?.cfa?.name ?? 'Hors mission'}</div>
+ <div className="text-xs text-gray-600 truncate">{se.mission?.formation?.name ?? '—'} · {se.mission?.name ?? ''}</div>
  <div className="text-xs text-gray-500">{se.start_time?.slice(0,5)}-{se.end_time?.slice(0,5)} · {se.room ?? '—'}</div>
  </div>
  <Link href={`/sessions/${se.id}`} className="btn btn-primary btn-sm">Saisir</Link>
  </div>
  ))}
- {past.filter((se: any) => !se.time_entries?.length).length === 0 && <p className="text-sm text-gray-500 text-center py-4">Aucune séance en attente </p>}
+ {past.filter((se: any) => !se.time_entries?.length).length === 0 && <p className="text-sm text-gray-500 text-center py-4">Aucune séance en attente</p>}
  </div>
  </div>
 
  <div className="card">
- <div className="card-header"><div className="card-title"> Prochaines séances</div></div>
+ <div className="card-header">
+ <div>
+ <div className="card-title">Prochaines séances (10 à venir)</div>
+ <div className="text-xs text-gray-500 mt-0.5">Matière enseignée, école, horaires et salle.</div>
+ </div>
+ </div>
  <div className="card-body space-y-2">
- {upcoming.slice(0, 5).map((se: any) => (
+ {upcoming.slice(0, 10).map((se: any) => (
  <div key={se.id} className="flex items-center gap-3 border border-gray-200 rounded-md p-3">
  <div className="bg-brand-light text-brand rounded-md px-3 py-1.5 text-center min-w-[54px]">
  <div className="font-bold">{new Date(se.session_date).getDate()}</div>
  <div className="text-[10px] uppercase">{new Date(se.session_date).toLocaleDateString('fr-FR', { month: 'short' })}</div>
  </div>
  <div className="flex-1 min-w-0">
- <div className="font-semibold text-navy text-sm truncate">{se.mission?.cfa?.name} — {se.mission?.name}</div>
- <div className="text-xs text-gray-500">{se.start_time?.slice(0,5)}-{se.end_time?.slice(0,5)} · {se.room ?? '—'}</div>
+ <div className="font-semibold text-navy text-sm truncate">{se.mission?.cfa?.name ?? 'Hors mission'}</div>
+ <div className="text-xs text-gray-600 truncate">
+ <b>{se.mission?.formation?.code ?? '—'}</b>{se.mission?.formation?.name ? ` · ${se.mission.formation.name}` : ''}
+ {se.mission?.name ? ` · ${se.mission.name}` : ''}
+ </div>
+ <div className="text-xs text-gray-500">
+ {new Date(se.session_date).toLocaleDateString('fr-FR', { weekday: 'long' })} · {se.start_time?.slice(0,5)}-{se.end_time?.slice(0,5)} · Salle {se.room ?? '—'}
+ </div>
  </div>
  </div>
  ))}
- {upcoming.length === 0 && <p className="text-sm text-gray-500 text-center py-4">Aucune séance planifiée</p>}
+ {upcoming.length === 0 && <p className="text-sm text-gray-500 text-center py-4">Aucune séance planifiée.</p>}
  </div>
  </div>
  </div>

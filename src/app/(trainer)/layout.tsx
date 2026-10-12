@@ -20,9 +20,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
  { href: '/home', label: 'Accueil' },
  { href: '/sessions', label: 'Saisir mes séances', badge: toSubmit },
  { href: '/declare-session', label: 'Déclarer une séance' },
+ { href: '/availability', label: 'Mes disponibilités' },
+ { href: '/absence', label: 'Déclarer une absence' },
  { href: '/earnings', label: 'Mes rémunérations' },
  { href: '/invoices', label: 'Mes factures' },
- { href: '/absence', label: 'Déclarer une absence' },
  { href: '/profile', label: 'Mon profil' },
  ]},
  ]
