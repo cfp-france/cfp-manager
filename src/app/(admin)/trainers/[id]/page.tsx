@@ -4,6 +4,7 @@ import { updateTrainer, toggleTrainerActive, unlinkTrainerFromUser, linkTrainerT
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { DocumentsPanel } from '@/components/DocumentsPanel'
+import { AvailabilityPanel } from '@/components/AvailabilityPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,6 +107,11 @@ export default async function EditTrainerPage({ params }: { params: { id: string
  </form>
  )}
  </div>
+ </div>
+
+ <div className="mt-4">
+ {/* @ts-expect-error async server component */}
+ <AvailabilityPanel trainerId={trainer.id} />
  </div>
 
  <div className="mt-4">
