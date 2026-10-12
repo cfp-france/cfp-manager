@@ -75,7 +75,8 @@ export async function generateMyMonthlyInvoice(formData: FormData) {
  let totalHt = 0
  const lines = entries.map((e: any) => {
  const h = Number(e.hours_actual ?? 0)
- const rate = Number(e.session?.mission?.trainer_hourly_rate ?? trainer.hourly_rate_default ?? 0)
+ // Priorité : tarif mission (si > 0) → tarif par défaut du formateur → 0
+ const rate = Number(e.session?.mission?.trainer_hourly_rate) || Number(trainer.hourly_rate_default) || 0
  const amt = Math.round(h * rate * 100) / 100
  totalHours += h
  totalHt += amt

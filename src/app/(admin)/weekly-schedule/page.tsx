@@ -199,8 +199,8 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
               </div>
               <div className="field mb-0">
                 <label className="text-[11px] font-semibold">Tarif formateur (€ HT / h)</label>
-                <input name="trainer_hourly_rate" type="number" step="0.01" placeholder="Ex : 40" className="text-sm border rounded px-2 py-1 w-full" />
-                <p className="text-[10px] text-gray-500">Appliqué à la rémunération formateur.</p>
+                <input name="trainer_hourly_rate" type="number" step="0.01" placeholder="Vide = tarif par défaut de chaque formateur" className="text-sm border rounded px-2 py-1 w-full" />
+                <p className="text-[10px] text-gray-500">Si vide, chaque formateur sera rémunéré à son tarif indiqué dans sa fiche.</p>
               </div>
               <div className="field mb-0 md:col-span-3">
                 <label className="text-[11px] font-semibold">Rattacher les séances à</label>
