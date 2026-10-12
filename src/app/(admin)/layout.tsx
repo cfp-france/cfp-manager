@@ -18,7 +18,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
  const sections = [
  { title: 'Pilotage', items: [
  { href: '/dashboard', label: 'Tableau de bord' },
- { href: '/planning', label: 'Planning hebdomadaire' },
+ { href: '/weekly-schedule', label: 'Planning récurrent (grille)' },
+ { href: '/planning', label: 'Planning hebdo (vue séances)' },
  ]},
  { title: 'Référentiels', items: [
  { href: '/cfa', label: 'CFA / Écoles' },
