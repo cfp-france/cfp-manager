@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
-import { upsertSlot, deleteSlot } from '@/actions/weekly-schedule'
+import { upsertSlot, deleteSlot, generateSessionsFromSchedule } from '@/actions/weekly-schedule'
 import { trainerColor } from '@/lib/trainer-colors'
 import Link from 'next/link'
 
@@ -33,11 +33,12 @@ const PX_PER_MIN = 1.1
 
 export default async function WeeklySchedulePage({ searchParams }: { searchParams: { cfa?: string; mode?: string } }) {
   const s = createClient()
-  const [{ data: cfas }, { data: trainers }, { data: formations }, { data: allSlots }] = await Promise.all([
+  const [{ data: cfas }, { data: trainers }, { data: formations }, { data: allSlots }, { data: missions }] = await Promise.all([
     s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
     s.from('trainers').select('id, first_name, last_name').eq('active', true).order('last_name'),
     s.from('formations').select('id, code, name, competence_blocks(id, number, title)').is('archived_at', null).order('name'),
     s.from('weekly_schedule_slots').select('*, cfa:cfa(id, name), trainer:trainers(first_name, last_name), formation:formations(code, name), block:competence_blocks(number, title)'),
+    s.from('missions').select('id, name, cfa_id').is('archived_at', null).order('name'),
   ])
 
   const mode = searchParams.mode === 'all' ? 'all' : 'single'
@@ -171,6 +172,46 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
               </div>
               <button className="btn btn-primary">Ajouter</button>
             </form>
+          </div>
+
+          {/* Génération automatique des séances */}
+          <div className="card mt-5 border-l-4 border-l-brand">
+            <div className="card-header">
+              <div>
+                <div className="card-title">Instancier automatiquement les séances</div>
+                <div className="text-xs text-gray-500 mt-0.5">Transforme ce planning hebdo en séances concrètes sur la période choisie. Les créneaux « pause » sont ignorés. Les doublons sont évités.</div>
+              </div>
+            </div>
+            <form action={generateSessionsFromSchedule} className="card-body grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+              <input type="hidden" name="cfa_id" value={selectedCfaId} />
+              <div className="field mb-0">
+                <label className="text-[11px] font-semibold">Date début</label>
+                <input name="start_date" type="date" required className="text-sm border rounded px-2 py-1 w-full" />
+              </div>
+              <div className="field mb-0">
+                <label className="text-[11px] font-semibold">Date fin</label>
+                <input name="end_date" type="date" required className="text-sm border rounded px-2 py-1 w-full" />
+              </div>
+              <div className="field mb-0 md:col-span-2">
+                <label className="text-[11px] font-semibold">Rattacher les séances à</label>
+                <select name="mission_choice" defaultValue="generic" className="text-sm border rounded px-2 py-1 w-full">
+                  <option value="generic">Créer / réutiliser une mission générique (tarifs à ajuster ensuite)</option>
+                  <option value="existing">Une mission existante du CFA :</option>
+                </select>
+                <select name="mission_id" className="text-sm border rounded px-2 py-1 w-full mt-1">
+                  <option value="">— Choisir une mission si « existante » —</option>
+                  {(missions ?? []).filter((m: any) => m.cfa_id === selectedCfaId).map((m: any) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button className="btn btn-primary">Générer les séances</button>
+            </form>
+            <div className="card-body border-t border-gray-100 bg-amber-50 text-xs text-amber-800">
+              <b>Attention :</b> si vous choisissez « Mission générique », une mission technique sera créée avec tarifs à 0 €.
+              Pensez à ouvrir la fiche de la mission pour renseigner les tarifs CFA et formateur avant de générer la facturation.
+              Les séances créées apparaîtront immédiatement dans « Planning hebdo (vue séances) », côté formateur dans « Mes séances », et pourront être saisies/validées normalement.
+            </div>
           </div>
         </>
       ) : (
