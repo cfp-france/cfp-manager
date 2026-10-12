@@ -7,10 +7,27 @@ export const dynamic = 'force-dynamic'
 
 export default async function MissionsPage() {
  const s = createClient()
+ // Requête simple pour éviter les ambiguïtés de jointure
  const { data: missions, error } = await s.from('missions')
- .select('id, name, cfa_id, formation_id, start_date, end_date, cfa_hourly_rate, trainer_hourly_rate, archived_at, cfa:cfa(name), formation:formations(code, name), mission_sessions(id)')
+ .select('id, name, cfa_id, formation_id, start_date, end_date, cfa_hourly_rate, trainer_hourly_rate, archived_at')
  .order('start_date', { ascending: false })
  if (error) console.error('[missions list]', error)
+
+ // Charger CFA et formations séparément
+ const cfaIds = [...new Set((missions ?? []).map(m => m.cfa_id).filter(Boolean))]
+ const formationIds = [...new Set((missions ?? []).map(m => m.formation_id).filter(Boolean))]
+ const [{ data: cfas }, { data: formations }, { data: sessionCounts }] = await Promise.all([
+ cfaIds.length ? s.from('cfa').select('id, name').in('id', cfaIds) : Promise.resolve({ data: [] }),
+ formationIds.length ? s.from('formations').select('id, code, name').in('id', formationIds) : Promise.resolve({ data: [] }),
+ s.from('mission_sessions').select('mission_id'),
+ ])
+ const cfaById = Object.fromEntries((cfas ?? []).map((c: any) => [c.id, c]))
+ const formationById = Object.fromEntries((formations ?? []).map((f: any) => [f.id, f]))
+ const sessionsCountByMission: Record<string, number> = {}
+ for (const r of sessionCounts ?? []) {
+ const mid = (r as any).mission_id
+ if (mid) sessionsCountByMission[mid] = (sessionsCountByMission[mid] ?? 0) + 1
+ }
 
  return (
  <div>
@@ -29,11 +46,11 @@ export default async function MissionsPage() {
  <td className="font-semibold">
  <Link href={`/missions/${m.id}`} className="text-brand hover:underline">{m.name}</Link>
  </td>
- <td>{m.cfa?.name}</td>
- <td>{m.formation?.code ?? '—'}</td>
+ <td>{cfaById[m.cfa_id]?.name ?? '—'}</td>
+ <td>{m.formation_id ? (formationById[m.formation_id]?.code ?? '—') : '—'}</td>
  <td className="text-xs">{fmtDate(m.start_date)} → {fmtDate(m.end_date)}</td>
- <td>{m.mission_sessions?.length ?? 0}</td>
- <td className="text-xs">{m.cfa_hourly_rate}€ / {m.trainer_hourly_rate}€</td>
+ <td>{sessionsCountByMission[m.id] ?? 0}</td>
+ <td className="text-xs">{Number(m.cfa_hourly_rate ?? 0)}€ / {Number(m.trainer_hourly_rate ?? 0)}€</td>
  <td>
  {m.archived_at
  ? <span className="status status-refused">Archivée</span>

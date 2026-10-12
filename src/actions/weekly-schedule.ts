@@ -67,6 +67,8 @@ export async function generateSessionsFromSchedule(formData: FormData) {
   const end_date = formData.get('end_date') as string
   const mission_choice = (formData.get('mission_choice') as string) || 'existing'
   const existing_mission_id = (formData.get('mission_id') as string) || null
+  const cfa_rate = Number(formData.get('cfa_hourly_rate') ?? 0)
+  const trainer_rate = Number(formData.get('trainer_hourly_rate') ?? 0)
   if (!cfa_id || !start_date || !end_date) return
 
   // 1) Charger le planning hebdo du CFA
@@ -88,14 +90,21 @@ export async function generateSessionsFromSchedule(formData: FormData) {
     const { data: existing } = await s.from('missions').select('id').eq('cfa_id', cfa_id).eq('name', name).maybeSingle()
     if (existing?.id) {
       targetMissionId = existing.id
+      // Mettre à jour les tarifs si l'admin les a renseignés
+      if (cfa_rate > 0 || trainer_rate > 0) {
+        await s.from('missions').update({
+          cfa_hourly_rate: cfa_rate || 0,
+          trainer_hourly_rate: trainer_rate || 0,
+        }).eq('id', existing.id)
+      }
     } else {
       const { data: created } = await s.from('missions').insert({
         name,
         cfa_id,
         start_date,
         end_date,
-        cfa_hourly_rate: 0,       // à ajuster par l'admin ensuite
-        trainer_hourly_rate: 0,   // idem
+        cfa_hourly_rate: cfa_rate || 0,
+        trainer_hourly_rate: trainer_rate || 0,
       }).select('id').single()
       targetMissionId = created?.id ?? null
     }

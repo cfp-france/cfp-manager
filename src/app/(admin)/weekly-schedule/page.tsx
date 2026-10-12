@@ -182,7 +182,7 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
                 <div className="text-xs text-gray-500 mt-0.5">Transforme ce planning hebdo en séances concrètes sur la période choisie. Les créneaux « pause » sont ignorés. Les doublons sont évités.</div>
               </div>
             </div>
-            <form action={generateSessionsFromSchedule} className="card-body grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+            <form action={generateSessionsFromSchedule} className="card-body grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
               <input type="hidden" name="cfa_id" value={selectedCfaId} />
               <div className="field mb-0">
                 <label className="text-[11px] font-semibold">Date début</label>
@@ -192,10 +192,20 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
                 <label className="text-[11px] font-semibold">Date fin</label>
                 <input name="end_date" type="date" required className="text-sm border rounded px-2 py-1 w-full" />
               </div>
-              <div className="field mb-0 md:col-span-2">
+              <div className="field mb-0">
+                <label className="text-[11px] font-semibold">Tarif CFA (€ HT / h)</label>
+                <input name="cfa_hourly_rate" type="number" step="0.01" placeholder="Ex : 55" className="text-sm border rounded px-2 py-1 w-full" />
+                <p className="text-[10px] text-gray-500">Appliqué à la mission générée (facturation CFA).</p>
+              </div>
+              <div className="field mb-0">
+                <label className="text-[11px] font-semibold">Tarif formateur (€ HT / h)</label>
+                <input name="trainer_hourly_rate" type="number" step="0.01" placeholder="Ex : 40" className="text-sm border rounded px-2 py-1 w-full" />
+                <p className="text-[10px] text-gray-500">Appliqué à la rémunération formateur.</p>
+              </div>
+              <div className="field mb-0 md:col-span-3">
                 <label className="text-[11px] font-semibold">Rattacher les séances à</label>
                 <select name="mission_choice" defaultValue="generic" className="text-sm border rounded px-2 py-1 w-full">
-                  <option value="generic">Créer / réutiliser une mission générique (tarifs à ajuster ensuite)</option>
+                  <option value="generic">Créer / réutiliser une mission générique avec les tarifs ci-dessus</option>
                   <option value="existing">Une mission existante du CFA :</option>
                 </select>
                 <select name="mission_id" className="text-sm border rounded px-2 py-1 w-full mt-1">
@@ -208,9 +218,9 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
               <button className="btn btn-primary">Générer les séances</button>
             </form>
             <div className="card-body border-t border-gray-100 bg-amber-50 text-xs text-amber-800">
-              <b>Attention :</b> si vous choisissez « Mission générique », une mission technique sera créée avec tarifs à 0 €.
-              Pensez à ouvrir la fiche de la mission pour renseigner les tarifs CFA et formateur avant de générer la facturation.
-              Les séances créées apparaîtront immédiatement dans « Planning hebdo (vue séances) », côté formateur dans « Mes séances », et pourront être saisies/validées normalement.
+              <b>À retenir :</b> les tarifs saisis sont enregistrés sur la mission générée (ou mise à jour si réutilisée).
+              Si vous rattachez à une mission existante, ses tarifs sont écrasés par ceux ci-dessus seulement si vous renseignez des valeurs &gt; 0.
+              Les créneaux « Pause » du planning hebdo sont ignorés — seules les séances de cours et événements créent des séances.
             </div>
           </div>
         </>
