@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
-import { updateTrainer, toggleTrainerActive, unlinkTrainerFromUser, linkTrainerToUser } from '@/actions/referentials'
+import { updateTrainer, toggleTrainerActive, unlinkTrainerFromUser, linkTrainerToUser, deleteTrainer } from '@/actions/referentials'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { DocumentsPanel } from '@/components/DocumentsPanel'
@@ -65,13 +65,21 @@ export default async function EditTrainerPage({ params }: { params: { id: string
  </div>
 
  <div className="card-body border-t border-gray-200 flex items-center justify-between gap-2">
+ <div className="flex gap-2 flex-wrap">
  <form action={toggleTrainerActive}>
  <input type="hidden" name="id" value={trainer.id} />
  <input type="hidden" name="activate" value={trainer.active ? '0' : '1'} />
  <button className={trainer.active ? 'btn btn-danger' : 'btn btn-success'}>
- {trainer.active ? '⏸ Désactiver' : ' Réactiver'}
+ {trainer.active ? 'Désactiver' : 'Réactiver'}
  </button>
  </form>
+ <form action={deleteTrainer}>
+ <input type="hidden" name="id" value={trainer.id} />
+ <button className="btn btn-danger" title="Suppression définitive — ne fonctionne que si aucune séance ou facture ne pointe vers ce formateur">
+  Supprimer définitivement
+ </button>
+ </form>
+ </div>
  <div className="flex gap-2">
  <Link href="/trainers" className="btn btn-outline">Annuler</Link>
  <button type="submit" className="btn btn-primary">Enregistrer les modifications</button>

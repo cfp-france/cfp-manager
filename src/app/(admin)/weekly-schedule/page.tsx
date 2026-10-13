@@ -1,7 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { upsertSlot, deleteSlot, generateSessionsFromSchedule } from '@/actions/weekly-schedule'
-import { trainerColor } from '@/lib/trainer-colors'
+import { trainerColor, buildTrainerColorMap, NO_TRAINER_COLOR } from '@/lib/trainer-colors'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -82,6 +82,9 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
   const selectedCfaId = mode === 'all' ? null : (searchParams.cfa ?? cfas?.[0]?.id ?? null)
   const slotsOfCfa = (cfaId: string | null) => (allSlots ?? []).filter((sl: any) => cfaId ? sl.cfa_id === cfaId : true)
 
+  // Attribution unique d'une couleur à chaque formateur (par ordre d'id)
+  const colorByTrainer = buildTrainerColorMap((trainers ?? []).map((t: any) => t.id))
+
   const dayStart = toMin('08:00')
   const dayEnd = toMin('20:00')
   const totalMin = dayEnd - dayStart
@@ -115,7 +118,7 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
         <div className="text-xs font-semibold text-navy uppercase tracking-wider mb-2">Formateurs — codes couleur</div>
         <div className="flex flex-wrap gap-2">
           {(trainers ?? []).map((t: any) => {
-            const c = trainerColor(t.id)
+            const c = colorByTrainer[t.id] ?? NO_TRAINER_COLOR
             return (
               <span key={t.id} className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium"
                 style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text }}>
@@ -141,7 +144,7 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
               <h2 className="text-lg font-bold text-navy mb-2">{c.name}</h2>
               <PlanningGrid
                 cfaId={c.id} slots={slotsOfCfa(c.id)} dayStart={dayStart} dayEnd={dayEnd} totalMin={totalMin}
-                trainers={trainers ?? []} formations={formations ?? []}
+                trainers={trainers ?? []} formations={formations ?? []} colorByTrainer={colorByTrainer}
               />
             </div>
           ))}
@@ -150,7 +153,7 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
         <>
           <PlanningGrid
             cfaId={selectedCfaId} slots={slotsOfCfa(selectedCfaId)} dayStart={dayStart} dayEnd={dayEnd} totalMin={totalMin}
-            trainers={trainers ?? []} formations={formations ?? []}
+            trainers={trainers ?? []} formations={formations ?? []} colorByTrainer={colorByTrainer}
           />
 
           {/* Formulaire d'ajout d'un créneau */}
@@ -270,10 +273,11 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
 
 // Composant grille planning. Server component rendu statiquement.
 function PlanningGrid({
-  cfaId, slots, dayStart, dayEnd, totalMin, trainers, formations,
+  cfaId, slots, dayStart, dayEnd, totalMin, trainers, formations, colorByTrainer,
 }: {
   cfaId: string; slots: any[]; dayStart: number; dayEnd: number; totalMin: number
   trainers: any[]; formations: any[]
+  colorByTrainer: Record<string, { bg: string; border: string; text: string }>
 }) {
   return (
     <div className="card p-0 overflow-hidden">
@@ -319,7 +323,7 @@ function PlanningGrid({
                 if (isLunch) { bg = '#fef3c7'; border = '#f59e0b'; text = '#92400e' }
                 else if (isEvent) { bg = '#dbeafe'; border = '#3b82f6'; text = '#1e40af' }
                 else {
-                  const c = trainerColor(sl.trainer_id)
+                  const c = (sl.trainer_id && colorByTrainer[sl.trainer_id]) || NO_TRAINER_COLOR
                   bg = c.bg; border = c.border; text = c.text
                 }
                 const widthPct = 100 / maxCols

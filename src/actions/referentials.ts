@@ -132,3 +132,38 @@ export async function unlinkTrainerFromUser(formData: FormData) {
  revalidatePath('/trainers')
  revalidatePath(`/trainers/${trainer_id}`)
 }
+
+/**
+ * Supprime définitivement un formateur. Bloque si des données le référencent
+ * (séances, saisies, factures) : dans ce cas, suggère la désactivation.
+ */
+export async function deleteTrainer(formData: FormData) {
+ const s = createClient()
+ const id = formData.get('id') as string
+ if (!id) return
+
+ // Vérifier qu'aucune donnée critique ne pointe vers ce formateur
+ const [{ count: nbSessions }, { count: nbEntries }, { count: nbInvoices }] = await Promise.all([
+  s.from('mission_sessions').select('*', { count: 'exact', head: true }).eq('trainer_id', id),
+  s.from('time_entries').select('*', { count: 'exact', head: true }).eq('trainer_id', id),
+  s.from('trainer_invoices').select('*', { count: 'exact', head: true }).eq('trainer_id', id),
+ ])
+ const total = (nbSessions ?? 0) + (nbEntries ?? 0) + (nbInvoices ?? 0)
+ if (total > 0) {
+  redirect('/trainers?toast=' + encodeURIComponent(
+   `Impossible de supprimer : ${nbSessions ?? 0} séance(s), ${nbEntries ?? 0} saisie(s), ${nbInvoices ?? 0} facture(s) rattachées. Désactivez-le plutôt.`
+  ) + '&toast_type=error')
+ }
+
+ // Nettoyage des références non-critiques
+ await s.from('trainer_availabilities').delete().eq('trainer_id', id)
+ await s.from('trainer_documents').delete().eq('trainer_id', id)
+ await s.from('weekly_schedule_slots').update({ trainer_id: null }).eq('trainer_id', id)
+
+ const { error } = await s.from('trainers').delete().eq('id', id)
+ if (error) {
+  redirect('/trainers?toast=' + encodeURIComponent('Erreur : ' + error.message) + '&toast_type=error')
+ }
+ revalidatePath('/trainers')
+ redirect('/trainers?toast=' + encodeURIComponent('Formateur supprimé définitivement.'))
+}
