@@ -31,6 +31,43 @@ function toMin(hhmm: string): number {
 /** Hauteur en pixels d'un créneau de X minutes (1 min = 1 px → 1h = 60px). */
 const PX_PER_MIN = 1.1
 
+/**
+ * Attribue à chaque créneau une colonne et un nombre total de colonnes pour que
+ * les créneaux qui se chevauchent (ex. 2 formateurs sur la même plage horaire)
+ * s'affichent côte à côte au lieu de se cacher.
+ */
+function layoutSlotsForDay(slots: any[]): { slot: any; column: number; maxCols: number }[] {
+  if (slots.length === 0) return []
+  const sorted = [...slots].sort((a, b) => a.start_time.localeCompare(b.start_time) || a.end_time.localeCompare(b.end_time))
+  type Active = { end: number; col: number }
+  const active: Active[] = []
+  const assigned: { slot: any; column: number; maxCols: number }[] = []
+  for (const sl of sorted) {
+    const st = toMin(sl.start_time), en = toMin(sl.end_time)
+    // Libérer les colonnes dont le créneau est terminé
+    for (let i = active.length - 1; i >= 0; i--) {
+      if (active[i].end <= st) active.splice(i, 1)
+    }
+    // Prendre la première colonne libre
+    const used = new Set(active.map(a => a.col))
+    let col = 0
+    while (used.has(col)) col++
+    active.push({ end: en, col })
+    assigned.push({ slot: sl, column: col, maxCols: 1 })
+  }
+  // Calcul du max de colonnes concurrentes vu depuis chaque créneau
+  for (const a of assigned) {
+    const st = toMin(a.slot.start_time), en = toMin(a.slot.end_time)
+    let maxCol = 0
+    for (const b of assigned) {
+      const bst = toMin(b.slot.start_time), ben = toMin(b.slot.end_time)
+      if (bst < en && ben > st) maxCol = Math.max(maxCol, b.column + 1)
+    }
+    a.maxCols = maxCol
+  }
+  return assigned
+}
+
 export default async function WeeklySchedulePage({ searchParams }: { searchParams: { cfa?: string; mode?: string } }) {
   const s = createClient()
   const [{ data: cfas }, { data: trainers }, { data: formations }, { data: allSlots }, { data: missions }] = await Promise.all([
@@ -264,7 +301,7 @@ function PlanningGrid({
         {/* Colonne par jour */}
         {DAYS.map(day => {
           const daySlots = slots.filter(s => s.weekday === day.num)
-            .sort((a, b) => a.start_time.localeCompare(b.start_time))
+          const laidOut = layoutSlotsForDay(daySlots)
           return (
             <div key={day.num} className="relative border-r border-gray-200" style={{ height: totalMin * PX_PER_MIN }}>
               {/* Lignes de guidage horaires */}
@@ -272,8 +309,8 @@ function PlanningGrid({
                 <div key={i} className="absolute left-0 right-0 border-t border-gray-100"
                   style={{ top: (i + 1) * 60 * PX_PER_MIN }} />
               ))}
-              {/* Créneaux */}
-              {daySlots.map((sl: any) => {
+              {/* Créneaux (positionnés côte à côte si chevauchement) */}
+              {laidOut.map(({ slot: sl, column, maxCols }) => {
                 const top = (toMin(sl.start_time) - dayStart) * PX_PER_MIN
                 const height = (toMin(sl.end_time) - toMin(sl.start_time)) * PX_PER_MIN
                 const isLunch = sl.kind === 'lunch_break' || sl.kind === 'break'
@@ -285,8 +322,11 @@ function PlanningGrid({
                   const c = trainerColor(sl.trainer_id)
                   bg = c.bg; border = c.border; text = c.text
                 }
+                const widthPct = 100 / maxCols
+                const leftPct = column * widthPct
                 return (
                   <SlotCell key={sl.id} slot={sl} top={top} height={height} bg={bg} border={border} text={text}
+                    leftPct={leftPct} widthPct={widthPct}
                     trainers={trainers} formations={formations} cfaId={cfaId} />
                 )
               })}
@@ -298,12 +338,15 @@ function PlanningGrid({
   )
 }
 
-function SlotCell({ slot, top, height, bg, border, text, trainers, formations, cfaId }: {
+function SlotCell({ slot, top, height, bg, border, text, leftPct, widthPct, trainers, formations, cfaId }: {
   slot: any; top: number; height: number; bg: string; border: string; text: string
+  leftPct: number; widthPct: number
   trainers: any[]; formations: any[]; cfaId: string
 }) {
   return (
-    <details className="absolute left-0.5 right-0.5 rounded border overflow-hidden" style={{ top, height, background: bg, borderColor: border }}>
+    <details className="absolute rounded border overflow-hidden"
+      style={{ top, height, background: bg, borderColor: border,
+               left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)` }}>
       <summary className="cursor-pointer p-1 text-[10px] leading-tight font-semibold select-none" style={{ color: text }}>
         <div>{slot.start_time.slice(0,5)}-{slot.end_time.slice(0,5)}</div>
         {slot.kind === 'lesson' && <>
