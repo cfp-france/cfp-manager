@@ -30,12 +30,12 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
   const [{ data: cfas }, { data: sessions }, { data: templateSlots }, { data: absences }] = await Promise.all([
     s.from('cfa').select('id, name, city, default_hourly_rate').is('archived_at', null).order('name'),
     s.from('mission_sessions')
-      .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, needs_substitution, break_minutes, mission:missions(name, cfa_hourly_rate, cfa:cfa(id, name, default_hourly_rate), formation:formations(code, name)), trainer:trainers(id, first_name, last_name), cfa:cfa(id, name, default_hourly_rate)')
+      .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, needs_substitution, break_minutes, mission:missions(name, cfa_hourly_rate, cfa:cfa(id, name, default_hourly_rate), formation:formations(code, name)), trainer:trainers(id, first_name, last_name, hourly_rate_default), cfa:cfa(id, name, default_hourly_rate)')
       .gte('session_date', iso(monday))
       .lte('session_date', iso(sunday))
       .order('session_date').order('start_time'),
     s.from('weekly_schedule_slots')
-      .select('id, cfa_id, weekday, start_time, end_time, kind, room, label, trainer_id, trainer:trainers(id, first_name, last_name), formation:formations(code, name), cfa:cfa(id, name, default_hourly_rate)')
+      .select('id, cfa_id, weekday, start_time, end_time, kind, room, label, trainer_id, trainer:trainers(id, first_name, last_name, hourly_rate_default), formation:formations(code, name), cfa:cfa(id, name, default_hourly_rate)')
       .in('kind', ['lesson', 'event']),
     s.from('trainer_absences').select('trainer_id, start_date, end_date, status').eq('status', 'validated').lte('start_date', iso(sunday)).gte('end_date', iso(monday)),
   ])
@@ -181,7 +181,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
                   <thead>
                     <tr>
                       <th>Jour</th><th>Date</th><th>Horaires</th>
-                      <th>Formation</th><th>Mission</th><th>Formateur</th><th>Salle</th><th>Type</th>
+                      <th>Formation</th><th>Mission</th><th>Formateur</th><th>Tarif form.</th><th>Salle</th><th>Type</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -192,18 +192,26 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
                       return daySessions.map((it: any, i: number) => {
                         const noTrainer = !it.trainer_id
                         const isTemplate = it.kind === 'template'
+                        const trainerRate = Number(it.trainer?.hourly_rate_default) || 0
                         return (
-                          <tr key={`${it.kind}-${dayDate}-${i}`} className={noTrainer ? 'bg-red-50' : (isTemplate ? 'bg-blue-50/40' : '')}>
-                            {i === 0 ? <td rowSpan={daySessions.length} className="font-semibold align-top bg-gray-50">{WEEKDAYS[dayIdx]}</td> : null}
+                          <tr
+                            key={`${it.kind}-${dayDate}-${i}`}
+                            className={noTrainer ? '' : (isTemplate ? 'bg-blue-50/40' : '')}
+                            style={noTrainer ? { backgroundColor: '#1f2937', color: '#ffffff' } : undefined}
+                          >
+                            {i === 0 ? <td rowSpan={daySessions.length} className="font-semibold align-top bg-gray-50 text-gray-900">{WEEKDAYS[dayIdx]}</td> : null}
                             <td>{fmtDate(it.session_date)}</td>
                             <td>{it.start_time?.slice(0,5)} - {it.end_time?.slice(0,5)}</td>
                             <td>
                               <div className="font-semibold">{it.formation?.code ?? '—'}</div>
-                              <div className="text-gray-500">{it.formation?.name ?? ''}</div>
+                              <div className={noTrainer ? 'text-white/70' : 'text-gray-500'}>{it.formation?.name ?? ''}</div>
                             </td>
                             <td className="max-w-[200px]"><div className="truncate">{it.mission?.name ?? (isTemplate ? '— (planning récurrent)' : '—')}</div></td>
-                            <td className={noTrainer ? 'text-red-700 font-semibold' : ''}>
-                              {it.trainer ? `${it.trainer.first_name} ${it.trainer.last_name}` : 'À pourvoir'}
+                            <td className={noTrainer ? 'font-bold uppercase tracking-wider' : ''}>
+                              {it.trainer ? `${it.trainer.first_name} ${it.trainer.last_name}` : 'À POURVOIR'}
+                            </td>
+                            <td className="font-semibold">
+                              {it.trainer ? (trainerRate > 0 ? `${trainerRate} €/h` : '—') : '—'}
                             </td>
                             <td>{it.room ?? '—'}</td>
                             <td>
