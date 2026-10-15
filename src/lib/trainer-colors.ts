@@ -26,6 +26,8 @@ export const PALETTE: { bg: string; border: string; text: string }[] = [
 ]
 
 const NEUTRAL = { bg: '#f3f4f6', border: '#9ca3af', text: '#374151' }
+// Palette dédiée aux créneaux sans formateur affecté (noir, bien visible)
+const UNASSIGNED = { bg: '#1f2937', border: '#000000', text: '#ffffff' }
 
 /**
  * Construit un dictionnaire { trainerId → couleur } garantissant l'unicité
@@ -54,4 +56,4 @@ export function trainerColor(trainerId: string | null | undefined) {
   return PALETTE[hash(trainerId) % PALETTE.length]
 }
 
-export const NO_TRAINER_COLOR = NEUTRAL
+export const NO_TRAINER_COLOR = UNASSIGNED

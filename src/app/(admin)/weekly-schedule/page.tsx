@@ -74,7 +74,7 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
     s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
     s.from('trainers').select('id, first_name, last_name').eq('active', true).order('last_name'),
     s.from('formations').select('id, code, name, competence_blocks(id, number, title)').is('archived_at', null).order('name'),
-    s.from('weekly_schedule_slots').select('*, cfa:cfa(id, name), trainer:trainers(first_name, last_name), formation:formations(code, name), block:competence_blocks(number, title)'),
+    s.from('weekly_schedule_slots').select('*, cfa:cfa(id, name), trainer:trainers(first_name, last_name, hourly_rate_default), formation:formations(code, name), block:competence_blocks(number, title)'),
     s.from('missions').select('id, name, cfa_id').is('archived_at', null).order('name'),
   ])
 
@@ -132,6 +132,9 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
           </span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-blue-100 border border-blue-500 text-blue-800">
             Événement (business game, examen...)
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-white" style={{ background: '#1f2937', border: '1px solid #000' }}>
+            À POURVOIR (sans formateur)
           </span>
         </div>
       </div>
@@ -354,8 +357,11 @@ function SlotCell({ slot, top, height, bg, border, text, leftPct, widthPct, trai
       <summary className="cursor-pointer p-1 text-[10px] leading-tight font-semibold select-none" style={{ color: text }}>
         <div>{slot.start_time.slice(0,5)}-{slot.end_time.slice(0,5)}</div>
         {slot.kind === 'lesson' && <>
-          <div className="truncate">{slot.trainer ? `${slot.trainer.first_name} ${slot.trainer.last_name}` : 'À pourvoir'}</div>
+          <div className="truncate">{slot.trainer ? `${slot.trainer.first_name} ${slot.trainer.last_name}` : 'À POURVOIR'}</div>
           <div className="truncate opacity-80">{slot.formation?.code ?? ''}{slot.block ? ` · B${slot.block.number}` : ''}</div>
+          {slot.trainer?.hourly_rate_default != null && Number(slot.trainer.hourly_rate_default) > 0 && (
+            <div className="truncate opacity-70">{Number(slot.trainer.hourly_rate_default)} €/h</div>
+          )}
         </>}
         {slot.kind === 'lunch_break' && <div>Pause déjeuner</div>}
         {slot.kind === 'break' && <div>Pause</div>}
