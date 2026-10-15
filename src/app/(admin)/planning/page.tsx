@@ -1,11 +1,22 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
+import { buildTrainerColorMap, NO_TRAINER_COLOR } from '@/lib/trainer-colors'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
-const WEEKDAYS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
+const DAYS = [
+  { num: 0, label: 'Lundi' },
+  { num: 1, label: 'Mardi' },
+  { num: 2, label: 'Mercredi' },
+  { num: 3, label: 'Jeudi' },
+  { num: 4, label: 'Vendredi' },
+  { num: 5, label: 'Samedi' },
+  { num: 6, label: 'Dimanche' },
+]
+
+const PX_PER_MIN = 1.1
 
 function parseWeekFrom(w?: string): Date {
   const now = new Date()
@@ -19,6 +30,40 @@ function iso(d: Date) { return d.toISOString().slice(0, 10) }
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(d.getDate() + n); return r }
 function toMin(hhmm: string): number { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m }
 
+/**
+ * Attribue à chaque item une colonne et un nombre total de colonnes pour que
+ * les créneaux qui se chevauchent (plusieurs formateurs sur la même plage)
+ * s'affichent côte à côte.
+ */
+function layoutItemsForDay(items: any[]): { item: any; column: number; maxCols: number }[] {
+  if (items.length === 0) return []
+  const sorted = [...items].sort((a, b) => a.start_time.localeCompare(b.start_time) || a.end_time.localeCompare(b.end_time))
+  type Active = { end: number; col: number }
+  const active: Active[] = []
+  const assigned: { item: any; column: number; maxCols: number }[] = []
+  for (const sl of sorted) {
+    const st = toMin(sl.start_time), en = toMin(sl.end_time)
+    for (let i = active.length - 1; i >= 0; i--) {
+      if (active[i].end <= st) active.splice(i, 1)
+    }
+    const used = new Set(active.map(a => a.col))
+    let col = 0
+    while (used.has(col)) col++
+    active.push({ end: en, col })
+    assigned.push({ item: sl, column: col, maxCols: 1 })
+  }
+  for (const a of assigned) {
+    const st = toMin(a.item.start_time), en = toMin(a.item.end_time)
+    let maxCol = 0
+    for (const b of assigned) {
+      const bst = toMin(b.item.start_time), ben = toMin(b.item.end_time)
+      if (bst < en && ben > st) maxCol = Math.max(maxCol, b.column + 1)
+    }
+    a.maxCols = maxCol
+  }
+  return assigned
+}
+
 export default async function PlanningPage({ searchParams }: { searchParams: { w?: string; cfa?: string } }) {
   const s = createClient()
   const monday = parseWeekFrom(searchParams.w)
@@ -27,7 +72,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
   const nextWeek = iso(addDays(monday, 7))
   const cfaFilter = searchParams.cfa && searchParams.cfa !== '' ? searchParams.cfa : null
 
-  const [{ data: cfas }, { data: sessions }, { data: templateSlots }, { data: absences }] = await Promise.all([
+  const [{ data: cfas }, { data: sessions }, { data: templateSlots }, { data: trainers }] = await Promise.all([
     s.from('cfa').select('id, name, city, default_hourly_rate').is('archived_at', null).order('name'),
     s.from('mission_sessions')
       .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, needs_substitution, break_minutes, mission:missions(name, cfa_hourly_rate, cfa:cfa(id, name, default_hourly_rate), formation:formations(code, name)), trainer:trainers(id, first_name, last_name, hourly_rate_default), cfa:cfa(id, name, default_hourly_rate)')
@@ -37,15 +82,14 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
     s.from('weekly_schedule_slots')
       .select('id, cfa_id, weekday, start_time, end_time, kind, room, label, trainer_id, trainer:trainers(id, first_name, last_name, hourly_rate_default), formation:formations(code, name), cfa:cfa(id, name, default_hourly_rate)')
       .in('kind', ['lesson', 'event']),
-    s.from('trainer_absences').select('trainer_id, start_date, end_date, status').eq('status', 'validated').lte('start_date', iso(sunday)).gte('end_date', iso(monday)),
+    s.from('trainers').select('id, first_name, last_name').eq('active', true).order('last_name'),
   ])
 
   const cfaFilterOk = (cfaId: string | null | undefined) => !cfaFilter || cfaId === cfaFilter
 
-  const concreteByKey = new Set<string>()  // date|start_time pour éviter doublon avec template
+  const concreteByKey = new Set<string>()
   const items: any[] = []
 
-  // 1. Séances concrètes
   for (const se of sessions ?? []) {
     const cfaId = (se as any).mission?.cfa?.id ?? (se as any).cfa?.id ?? null
     if (!cfaFilterOk(cfaId)) continue
@@ -54,8 +98,8 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
     items.push({
       kind: 'real',
       session_date: (se as any).session_date,
-      start_time: (se as any).start_time,
-      end_time: (se as any).end_time,
+      start_time: (se as any).start_time?.slice(0,5),
+      end_time: (se as any).end_time?.slice(0,5),
       break_minutes: (se as any).break_minutes ?? 0,
       room: (se as any).room,
       trainer_id: (se as any).trainer_id,
@@ -67,21 +111,20 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
     })
   }
 
-  // 2. Créneaux récurrents du planning hebdo (projetés sur chaque jour de la semaine)
   for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
     const date = iso(addDays(monday, dayIdx))
-    const pgWeekday = dayIdx + 1  // 1=lundi, 7=dimanche
+    const pgWeekday = dayIdx + 1
     for (const sl of templateSlots ?? []) {
       if ((sl as any).weekday !== pgWeekday) continue
       const cfaId = (sl as any).cfa_id
       if (!cfaFilterOk(cfaId)) continue
       const key = `${date}|${(sl as any).start_time?.slice(0,5)}|${cfaId}`
-      if (concreteByKey.has(key)) continue   // déjà une vraie séance → on ne duplique pas
+      if (concreteByKey.has(key)) continue
       items.push({
         kind: 'template',
         session_date: date,
-        start_time: (sl as any).start_time,
-        end_time: (sl as any).end_time,
+        start_time: (sl as any).start_time?.slice(0,5),
+        end_time: (sl as any).end_time?.slice(0,5),
         break_minutes: 0,
         room: (sl as any).room,
         trainer_id: (sl as any).trainer_id,
@@ -94,28 +137,31 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
     }
   }
 
-  // Grouper par CFA puis par jour
-  const byCfa: Record<string, { cfaName: string; days: Record<string, any[]> }> = {}
+  // Grouper par CFA
+  const byCfa: Record<string, { cfaName: string; items: any[] }> = {}
   for (const it of items) {
     const cfaId = it.cfa?.id ?? 'unknown'
     const cfaName = it.cfa?.name ?? 'Sans CFA'
-    if (!byCfa[cfaId]) byCfa[cfaId] = { cfaName, days: {} }
-    if (!byCfa[cfaId].days[it.session_date]) byCfa[cfaId].days[it.session_date] = []
-    byCfa[cfaId].days[it.session_date].push(it)
-  }
-  for (const g of Object.values(byCfa)) {
-    for (const key in g.days) g.days[key].sort((a, b) => a.start_time.localeCompare(b.start_time))
+    if (!byCfa[cfaId]) byCfa[cfaId] = { cfaName, items: [] }
+    byCfa[cfaId].items.push(it)
   }
 
-  // Calcul CA prévisionnel + total heures
+  // Codes couleur formateurs
+  const colorByTrainer = buildTrainerColorMap((trainers ?? []).map((t: any) => t.id))
+
+  // KPIs
   let totalHours = 0, ca = 0, unassignedCount = 0
   for (const it of items) {
-    const durationMin = toMin(it.end_time?.slice(0,5)) - toMin(it.start_time?.slice(0,5)) - (it.break_minutes ?? 0)
+    const durationMin = toMin(it.end_time) - toMin(it.start_time) - (it.break_minutes ?? 0)
     const h = Math.max(0, durationMin / 60)
     totalHours += h
     ca += h * (it.cfaRate ?? 0)
     if (!it.trainer_id) unassignedCount++
   }
+
+  const dayStart = toMin('08:00')
+  const dayEnd = toMin('20:00')
+  const totalMin = dayEnd - dayStart
 
   return (
     <div>
@@ -159,77 +205,129 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
         </div>
       </div>
 
+      {/* Légende formateurs */}
+      <div className="card p-3 mb-4">
+        <div className="text-xs font-semibold text-navy uppercase tracking-wider mb-2">Formateurs — codes couleur</div>
+        <div className="flex flex-wrap gap-2">
+          {(trainers ?? []).map((t: any) => {
+            const c = colorByTrainer[t.id] ?? NO_TRAINER_COLOR
+            return (
+              <span key={t.id} className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium"
+                style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text }}>
+                <span className="w-2 h-2 rounded-full" style={{ background: c.border }} />
+                {t.first_name} {t.last_name}
+              </span>
+            )
+          })}
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-white" style={{ background: '#1f2937', border: '1px solid #000' }}>
+            À POURVOIR (sans formateur)
+          </span>
+        </div>
+      </div>
+
       {Object.keys(byCfa).length === 0 ? (
         <div className="card p-8 text-center text-gray-500">
           Aucun créneau ni séance planifiée cette semaine.
           <div className="text-xs mt-2 text-gray-400">Astuce : construisez votre planning hebdomadaire récurrent dans « Planning récurrent (grille) », il sera projeté ici automatiquement.</div>
         </div>
       ) : (
-        <div className="space-y-5">
-          {Object.values(byCfa).map(group => (
-            <div key={group.cfaName} className="card">
-              <div className="card-header bg-brand-light">
-                <div>
-                  <div className="card-title">{group.cfaName}</div>
-                  <div className="text-xs text-gray-600 mt-0.5">
-                    {Object.values(group.days).reduce((s, d) => s + d.length, 0)} créneaux cette semaine
-                  </div>
-                </div>
-              </div>
-              <div className="card-body p-0">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr>
-                      <th>Jour</th><th>Date</th><th>Horaires</th>
-                      <th>Formation</th><th>Mission</th><th>Formateur</th><th>Tarif form.</th><th>Salle</th><th>Type</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: 7 }).map((_, dayIdx) => {
-                      const dayDate = iso(addDays(monday, dayIdx))
-                      const daySessions = group.days[dayDate] ?? []
-                      if (daySessions.length === 0) return null
-                      return daySessions.map((it: any, i: number) => {
-                        const noTrainer = !it.trainer_id
-                        const isTemplate = it.kind === 'template'
-                        const trainerRate = Number(it.trainer?.hourly_rate_default) || 0
-                        return (
-                          <tr
-                            key={`${it.kind}-${dayDate}-${i}`}
-                            className={noTrainer ? '' : (isTemplate ? 'bg-blue-50/40' : '')}
-                            style={noTrainer ? { backgroundColor: '#1f2937', color: '#ffffff' } : undefined}
-                          >
-                            {i === 0 ? <td rowSpan={daySessions.length} className="font-semibold align-top bg-gray-50 text-gray-900">{WEEKDAYS[dayIdx]}</td> : null}
-                            <td>{fmtDate(it.session_date)}</td>
-                            <td>{it.start_time?.slice(0,5)} - {it.end_time?.slice(0,5)}</td>
-                            <td>
-                              <div className="font-semibold">{it.formation?.code ?? '—'}</div>
-                              <div className={noTrainer ? 'text-white/70' : 'text-gray-500'}>{it.formation?.name ?? ''}</div>
-                            </td>
-                            <td className="max-w-[200px]"><div className="truncate">{it.mission?.name ?? (isTemplate ? '— (planning récurrent)' : '—')}</div></td>
-                            <td className={noTrainer ? 'font-bold uppercase tracking-wider' : ''}>
-                              {it.trainer ? `${it.trainer.first_name} ${it.trainer.last_name}` : 'À POURVOIR'}
-                            </td>
-                            <td className="font-semibold">
-                              {it.trainer ? (trainerRate > 0 ? `${trainerRate} €/h` : '—') : '—'}
-                            </td>
-                            <td>{it.room ?? '—'}</td>
-                            <td>
-                              {isTemplate
-                                ? <span className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-800 font-semibold">Récurrent</span>
-                                : <span className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-green-100 text-green-800 font-semibold">Instancié</span>}
-                            </td>
-                          </tr>
-                        )
-                      })
-                    })}
-                  </tbody>
-                </table>
-              </div>
+        <div className="space-y-6">
+          {Object.entries(byCfa).map(([cfaId, group]) => (
+            <div key={cfaId}>
+              <h2 className="text-lg font-bold text-navy mb-2">{group.cfaName}</h2>
+              <WeekGrid
+                monday={monday}
+                items={group.items}
+                dayStart={dayStart}
+                totalMin={totalMin}
+                colorByTrainer={colorByTrainer}
+              />
             </div>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function WeekGrid({
+  monday, items, dayStart, totalMin, colorByTrainer,
+}: {
+  monday: Date; items: any[]; dayStart: number; totalMin: number
+  colorByTrainer: Record<string, { bg: string; border: string; text: string }>
+}) {
+  return (
+    <div className="card p-0 overflow-hidden">
+      <div className="grid" style={{ gridTemplateColumns: '60px repeat(7, 1fr)' }}>
+        <div className="bg-gray-50 border-b border-gray-200 border-r" style={{ height: 48 }}></div>
+        {DAYS.map(d => {
+          const date = addDays(monday, d.num)
+          return (
+            <div key={d.num} className="bg-gray-50 border-b border-gray-200 text-center py-1" style={{ height: 48 }}>
+              <div className="text-xs font-bold text-navy">{d.label}</div>
+              <div className="text-[10px] text-gray-500">{String(date.getDate()).padStart(2, '0')}/{String(date.getMonth() + 1).padStart(2, '0')}</div>
+            </div>
+          )
+        })}
+
+        {/* Colonne horaire */}
+        <div className="relative border-r border-gray-200" style={{ height: totalMin * PX_PER_MIN }}>
+          {Array.from({ length: 13 }).map((_, i) => {
+            const h = 8 + i
+            return (
+              <div key={h} className="absolute left-0 right-0 text-[10px] text-gray-500 pl-1 border-t border-gray-100"
+                style={{ top: i * 60 * PX_PER_MIN, height: 60 * PX_PER_MIN }}>
+                {h}h
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Colonne par jour */}
+        {DAYS.map(day => {
+          const dayDate = iso(addDays(monday, day.num))
+          const dayItems = items.filter(it => it.session_date === dayDate)
+          const laidOut = layoutItemsForDay(dayItems)
+          return (
+            <div key={day.num} className="relative border-r border-gray-200" style={{ height: totalMin * PX_PER_MIN }}>
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="absolute left-0 right-0 border-t border-gray-100"
+                  style={{ top: (i + 1) * 60 * PX_PER_MIN }} />
+              ))}
+              {laidOut.map(({ item, column, maxCols }, idx) => {
+                const top = (toMin(item.start_time) - dayStart) * PX_PER_MIN
+                const height = (toMin(item.end_time) - toMin(item.start_time)) * PX_PER_MIN
+                const c = (item.trainer_id && colorByTrainer[item.trainer_id]) || NO_TRAINER_COLOR
+                const widthPct = 100 / maxCols
+                const leftPct = column * widthPct
+                const trainerRate = Number(item.trainer?.hourly_rate_default) || 0
+                const isTemplate = item.kind === 'template'
+                return (
+                  <div key={idx} className="absolute rounded border overflow-hidden"
+                    style={{
+                      top, height,
+                      background: c.bg, borderColor: c.border, color: c.text,
+                      left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
+                      borderStyle: isTemplate ? 'dashed' : 'solid',
+                    }}>
+                    <div className="p-1 text-[10px] leading-tight font-semibold">
+                      <div className="flex items-center gap-1">
+                        {isTemplate && <span title="Créneau récurrent (non instancié)">▶</span>}
+                        <span>{item.start_time}-{item.end_time}</span>
+                      </div>
+                      <div className="truncate">{item.trainer ? `${item.trainer.first_name} ${item.trainer.last_name}` : 'À POURVOIR'}</div>
+                      <div className="truncate opacity-80">{item.formation?.code ?? ''}</div>
+                      {item.trainer && trainerRate > 0 && (
+                        <div className="truncate opacity-70">{trainerRate} €/h</div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
