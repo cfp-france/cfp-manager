@@ -57,6 +57,44 @@ export async function validateEntry(formData: FormData) {
 }
 
 /**
+ * Modifie les heures effectives d'une saisie (par l'admin, depuis la page Validation).
+ * Utile quand le formateur s'est trompé en déclarant plus d'heures que prévu.
+ * Recalcule hours_actual automatiquement si actual_start/end/break_minutes sont donnés.
+ */
+export async function editEntryHours(formData: FormData) {
+  const s = createClient()
+  const entry_id = formData.get('entry_id') as string
+  if (!entry_id) return
+
+  const actual_start = (formData.get('actual_start') as string) || null
+  const actual_end = (formData.get('actual_end') as string) || null
+  const break_minutes = formData.get('break_minutes') ? Number(formData.get('break_minutes')) : null
+  const hours_actual_override = formData.get('hours_actual') ? Number(formData.get('hours_actual')) : null
+  const adjustment_reason = (formData.get('adjustment_reason') as string) || null
+
+  // Si on a start+end+pause, on recalcule les heures nettes.
+  // Sinon on prend la valeur manuelle fournie.
+  const payload: any = { adjustment_reason }
+  if (actual_start) payload.actual_start = actual_start
+  if (actual_end) payload.actual_end = actual_end
+  if (break_minutes != null && !isNaN(break_minutes)) payload.break_minutes = break_minutes
+
+  if (actual_start && actual_end && break_minutes != null) {
+    // Calcul en heures = (end - start)/60 - break/60
+    const [sh, sm] = actual_start.split(':').map(Number)
+    const [eh, em] = actual_end.split(':').map(Number)
+    const diffMin = (eh * 60 + em) - (sh * 60 + sm) - break_minutes
+    payload.hours_actual = Math.max(0, Math.round((diffMin / 60) * 100) / 100)
+  } else if (hours_actual_override != null && !isNaN(hours_actual_override)) {
+    payload.hours_actual = hours_actual_override
+  }
+
+  await s.from('time_entries').update(payload).eq('id', entry_id)
+  revalidatePath('/validation')
+  redirect('/validation?toast=' + encodeURIComponent('Heures mises à jour sur la saisie.'))
+}
+
+/**
  * Change le CFA de la mission liée à une saisie (correction d'erreur par l'admin
  * depuis la page Validation). Applique le changement sur toutes les séances de
  * la mission pour que la facturation CFA pointe au bon endroit.
@@ -105,6 +143,48 @@ export async function unvalidateEntry(formData: FormData) {
  revalidatePath('/validation')
  revalidatePath('/dashboard')
  redirect('/dashboard?toast=' + encodeURIComponent('Saisie dévalidée. Elle retourne en file d\'attente.') + '&toast_type=info')
+}
+
+/**
+ * Permet au formateur de supprimer une séance qu'il a lui-même déclarée en se trompant.
+ * - Si la séance est "self_declared" (déclarée hors planning) : on supprime la séance ET la saisie
+ * - Sinon (séance issue d'une mission planifiée) : on supprime uniquement la time_entry ;
+ *   la séance planifiée reste pour que le formateur puisse re-saisir correctement.
+ * - Impossible de supprimer une saisie déjà validée (il faut passer par l'admin pour dévalider).
+ */
+export async function deleteMyEntry(formData: FormData) {
+  const s = createClient()
+  const { data: { user } } = await s.auth.getUser()
+  if (!user) return
+  const { data: trainer } = await s.from('trainers').select('id').eq('user_id', user.id).single()
+  if (!trainer) return
+
+  const session_id = formData.get('session_id') as string
+  if (!session_id) return
+
+  const { data: session } = await s.from('mission_sessions')
+    .select('id, trainer_id, self_declared, time_entries(id, status)')
+    .eq('id', session_id).single()
+  if (!session || session.trainer_id !== trainer.id) return
+
+  const te: any = Array.isArray(session.time_entries) ? session.time_entries[0] : null
+  if (te?.status === 'validated') {
+    redirect('/sessions?toast=' + encodeURIComponent('Cette saisie est validée. Demandez à l\'admin de la dévalider avant de supprimer.') + '&toast_type=error')
+  }
+
+  // Supprime la time_entry si elle existe
+  if (te?.id) await s.from('time_entries').delete().eq('id', te.id)
+
+  // Si la séance est hors planning, on la supprime aussi
+  if ((session as any).self_declared) {
+    await s.from('session_documents').delete().eq('session_id', session_id)
+    await s.from('mission_sessions').delete().eq('id', session_id)
+    revalidatePath('/sessions')
+    redirect('/sessions?toast=' + encodeURIComponent('Séance supprimée.') + '&toast_type=info')
+  }
+
+  revalidatePath('/sessions')
+  redirect(`/sessions/${session_id}?toast=` + encodeURIComponent('Saisie supprimée. La séance reste au planning pour une nouvelle saisie.') + '&toast_type=info')
 }
 
 export async function refuseEntry(formData: FormData) {

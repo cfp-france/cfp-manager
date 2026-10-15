@@ -1,7 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtHours } from '@/lib/utils'
-import { validateEntry, refuseEntry, attachSessionToMission, changeEntryCfa } from '@/actions/entries'
+import { validateEntry, refuseEntry, attachSessionToMission, changeEntryCfa, editEntryHours } from '@/actions/entries'
 
 export const dynamic = 'force-dynamic'
 
@@ -113,6 +113,22 @@ export default async function ValidationPage() {
  </select>
  <button className="btn btn-sm btn-outline">Appliquer</button>
  </div>
+ </form>
+
+ {/* Édition des heures effectives (si le formateur s'est trompé) */}
+ <form action={editEntryHours} className="mb-2 border border-purple-200 bg-purple-50 rounded p-2">
+ <input type="hidden" name="entry_id" value={e.id} />
+ <label className="text-[11px] font-semibold text-purple-800 block mb-1">Corriger les heures effectives :</label>
+ <div className="grid grid-cols-3 gap-1 mb-1">
+ <input name="actual_start" type="time" defaultValue={e.actual_start ?? ''} className="text-xs border rounded px-1 py-1" title="Heure début" />
+ <input name="actual_end" type="time" defaultValue={e.actual_end ?? ''} className="text-xs border rounded px-1 py-1" title="Heure fin" />
+ <input name="break_minutes" type="number" defaultValue={e.break_minutes ?? 60} placeholder="Pause (min)" className="text-xs border rounded px-1 py-1" title="Pause (min)" />
+ </div>
+ <div className="flex gap-1">
+ <input name="hours_actual" type="number" step="0.25" defaultValue={Number(e.hours_actual ?? 0)} placeholder="Heures nettes (manuel)" className="text-xs border rounded px-1 py-1 flex-1" title="Nombre d'heures nettes" />
+ <button className="btn btn-sm btn-outline">Recalculer / Enregistrer</button>
+ </div>
+ <input name="adjustment_reason" defaultValue={e.adjustment_reason ?? ''} placeholder="Motif d'ajustement (optionnel)" className="text-xs border rounded px-1 py-1 w-full mt-1" />
  </form>
 
  {isSelfDeclared && !e.session?.mission_id && availableMissionsForCfa.length > 0 && (

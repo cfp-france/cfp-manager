@@ -1,7 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtHours, requireTrainer } from '@/lib/utils'
-import { submitTimeEntry } from '@/actions/entries'
+import { submitTimeEntry, deleteMyEntry } from '@/actions/entries'
 import { updateMySession } from '@/actions/sessions'
 import { notFound } from 'next/navigation'
 import { PedagogyPicker } from '@/components/PedagogyPicker'
@@ -122,6 +122,19 @@ export default async function SessionEditPage({ params }: { params: { id: string
  </div>
  )}
  </form>
+
+ {!disabled && (
+ <form action={deleteMyEntry} className="mt-4 bg-red-50 border-l-4 border-red-500 p-3 rounded flex items-center justify-between gap-3">
+ <input type="hidden" name="session_id" value={session.id} />
+ <div className="text-xs text-red-800">
+ <b>Supprimer cette saisie :</b> à utiliser si vous vous êtes trompé.
+ {session.self_declared
+   ? ' La séance entière sera supprimée (c\'est une déclaration hors planning).'
+   : ' Seule votre saisie sera supprimée ; la séance planifiée restera au planning pour une nouvelle saisie.'}
+ </div>
+ <button className="btn btn-sm btn-danger">Supprimer</button>
+ </form>
+ )}
 
  <div className="mt-5">
  {/* @ts-expect-error async server component */}
