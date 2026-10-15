@@ -13,7 +13,7 @@ function parseDate(v?: string): string | null {
  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null
 }
 
-export default async function Dashboard({ searchParams }: { searchParams: { from?: string; to?: string; cfa?: string; preset?: string } }) {
+export default async function Dashboard({ searchParams }: { searchParams: { from?: string; to?: string; cfa?: string; trainer?: string; preset?: string } }) {
  const s = createClient()
  const today = new Date()
  const yyyy = today.getFullYear()
@@ -36,12 +36,16 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  const from = parseDate(searchParams.from) ?? defaultFrom
  const to = parseDate(searchParams.to) ?? defaultTo
  const cfaFilter = searchParams.cfa && searchParams.cfa !== '' ? searchParams.cfa : null
+ const trainerFilter = searchParams.trainer && searchParams.trainer !== '' ? searchParams.trainer : null
 
- // Liste des CFA pour le filtre
- const { data: cfas } = await s.from('cfa').select('id, name').is('archived_at', null).order('name')
+ // Liste des CFA et formateurs pour les filtres
+ const [{ data: cfas }, { data: trainersList }] = await Promise.all([
+  s.from('cfa').select('id, name').is('archived_at', null).order('name'),
+  s.from('trainers').select('id, first_name, last_name').eq('active', true).order('last_name'),
+ ])
 
  // Entrées validées sur la période (on charge aussi le tarif par défaut du CFA pour fallback)
- const { data: entriesRaw } = await s.from('time_entries')
+ let query = s.from('time_entries')
  .select(`id, hours_actual, status, work_date, validated_at, session_id, trainer_id,
  trainer:trainers(first_name, last_name, hourly_rate_default),
  session:mission_sessions(mission_id, cfa_id,
@@ -51,6 +55,8 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  .gte('work_date', from)
  .lte('work_date', to)
  .order('work_date', { ascending: false })
+ if (trainerFilter) query = query.eq('trainer_id', trainerFilter)
+ const { data: entriesRaw } = await query
 
  // Filtre CFA côté app (parce que cfa_id est sur mission OU sur session)
  const entries = (entriesRaw ?? []).filter((e: any) => {
@@ -138,11 +144,18 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  <label className="text-[11px] font-semibold text-navy">Au</label>
  <input type="date" name="to" defaultValue={to} className="text-sm border rounded px-2 py-1" />
  </div>
- <div className="field mb-0 flex-1 min-w-[200px]">
+ <div className="field mb-0 flex-1 min-w-[180px]">
  <label className="text-[11px] font-semibold text-navy">CFA</label>
  <select name="cfa" defaultValue={cfaFilter ?? ''} className="text-sm border rounded px-2 py-1 w-full">
  <option value="">Tous les CFA</option>
  {(cfas ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+ </select>
+ </div>
+ <div className="field mb-0 flex-1 min-w-[180px]">
+ <label className="text-[11px] font-semibold text-navy">Formateur</label>
+ <select name="trainer" defaultValue={trainerFilter ?? ''} className="text-sm border rounded px-2 py-1 w-full">
+ <option value="">Tous les formateurs</option>
+ {(trainersList ?? []).map((t: any) => <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>)}
  </select>
  </div>
  <button className="btn btn-sm btn-primary">Appliquer</button>
