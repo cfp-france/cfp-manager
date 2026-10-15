@@ -66,10 +66,18 @@ export async function editEntryHours(formData: FormData) {
   const entry_id = formData.get('entry_id') as string
   if (!entry_id) return
 
-  const actual_start = (formData.get('actual_start') as string) || null
-  const actual_end = (formData.get('actual_end') as string) || null
-  let break_minutes = formData.get('break_minutes') ? Number(formData.get('break_minutes')) : null
-  const hours_actual_override = formData.get('hours_actual') ? Number(formData.get('hours_actual')) : null
+  // Normalise les heures sous format HH:MM (le navigateur peut renvoyer HH:MM:SS)
+  const normTime = (v: string | null) => {
+    if (!v) return null
+    const parts = v.split(':')
+    return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : v
+  }
+  const actual_start = normTime((formData.get('actual_start') as string) || null)
+  const actual_end = normTime((formData.get('actual_end') as string) || null)
+  const breakRaw = formData.get('break_minutes') as string | null
+  let break_minutes = breakRaw != null && breakRaw !== '' ? Number(breakRaw) : null
+  const hoursRaw = formData.get('hours_actual') as string | null
+  const hours_actual_override = hoursRaw != null && hoursRaw !== '' ? Number(hoursRaw) : null
   const adjustment_reason = (formData.get('adjustment_reason') as string) || null
   const deductLunch = formData.get('deduct_lunch') === '1'
 
@@ -78,28 +86,37 @@ export async function editEntryHours(formData: FormData) {
     break_minutes = Math.max(break_minutes ?? 0, 60)
   }
 
-  // Si on a start+end+pause, on recalcule les heures nettes.
-  // Sinon on prend la valeur manuelle fournie.
+  // On recalcule toujours à partir de start/end/break si possible — c'est la source la plus fiable.
+  // Sinon seulement on utilise la valeur manuelle "Heures nettes".
   const payload: any = { adjustment_reason }
   if (actual_start) payload.actual_start = actual_start
   if (actual_end) payload.actual_end = actual_end
   if (break_minutes != null && !isNaN(break_minutes)) payload.break_minutes = break_minutes
 
-  if (actual_start && actual_end && break_minutes != null) {
-    // Calcul en heures = (end - start)/60 - break/60
+  let computedHours: number | null = null
+  if (actual_start && actual_end && break_minutes != null && !isNaN(break_minutes)) {
     const [sh, sm] = actual_start.split(':').map(Number)
     const [eh, em] = actual_end.split(':').map(Number)
     const diffMin = (eh * 60 + em) - (sh * 60 + sm) - break_minutes
-    payload.hours_actual = Math.max(0, Math.round((diffMin / 60) * 100) / 100)
+    computedHours = Math.max(0, Math.round((diffMin / 60) * 100) / 100)
+    payload.hours_actual = computedHours
   } else if (hours_actual_override != null && !isNaN(hours_actual_override)) {
-    // En mode saisie manuelle, si la case pause déjeuner est cochée on retranche 1h
-    payload.hours_actual = Math.max(0, Math.round((hours_actual_override - (deductLunch ? 1 : 0)) * 100) / 100)
+    computedHours = Math.max(0, Math.round((hours_actual_override - (deductLunch ? 1 : 0)) * 100) / 100)
+    payload.hours_actual = computedHours
     if (deductLunch) payload.break_minutes = 60
   }
 
-  await s.from('time_entries').update(payload).eq('id', entry_id)
-  revalidatePath('/validation')
-  redirect('/validation?toast=' + encodeURIComponent('Heures mises à jour sur la saisie.'))
+  const { error } = await s.from('time_entries').update(payload).eq('id', entry_id)
+  if (error) {
+    console.error('[editEntryHours] erreur SQL', error)
+    redirect('/validation?toast=' + encodeURIComponent('Erreur : ' + error.message) + '&toast_type=error')
+  }
+  revalidatePath('/validation', 'page')
+  revalidatePath('/dashboard')
+  const msg = computedHours != null
+    ? `Saisie mise à jour : ${computedHours.toFixed(2).replace('.', 'h')}`
+    : 'Saisie mise à jour.'
+  redirect('/validation?toast=' + encodeURIComponent(msg))
 }
 
 /**
