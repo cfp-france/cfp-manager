@@ -128,6 +128,10 @@ export default async function ValidationPage() {
  <input name="hours_actual" type="number" step="0.25" defaultValue={Number(e.hours_actual ?? 0)} placeholder="Heures nettes (manuel)" className="text-xs border rounded px-1 py-1 flex-1" title="Nombre d'heures nettes" />
  <button className="btn btn-sm btn-outline">Recalculer / Enregistrer</button>
  </div>
+ <label className="flex items-center gap-1 mt-1 text-[11px] text-purple-800 cursor-pointer">
+ <input type="checkbox" name="deduct_lunch" value="1" />
+ <span>Déduire automatiquement 1h pour la pause déjeuner</span>
+ </label>
  <input name="adjustment_reason" defaultValue={e.adjustment_reason ?? ''} placeholder="Motif d'ajustement (optionnel)" className="text-xs border rounded px-1 py-1 w-full mt-1" />
  </form>
 

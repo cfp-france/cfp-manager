@@ -68,9 +68,15 @@ export async function editEntryHours(formData: FormData) {
 
   const actual_start = (formData.get('actual_start') as string) || null
   const actual_end = (formData.get('actual_end') as string) || null
-  const break_minutes = formData.get('break_minutes') ? Number(formData.get('break_minutes')) : null
+  let break_minutes = formData.get('break_minutes') ? Number(formData.get('break_minutes')) : null
   const hours_actual_override = formData.get('hours_actual') ? Number(formData.get('hours_actual')) : null
   const adjustment_reason = (formData.get('adjustment_reason') as string) || null
+  const deductLunch = formData.get('deduct_lunch') === '1'
+
+  // Si la case "déduire 1h pause déjeuner" est cochée, on garantit 60 min de pause minimum
+  if (deductLunch) {
+    break_minutes = Math.max(break_minutes ?? 0, 60)
+  }
 
   // Si on a start+end+pause, on recalcule les heures nettes.
   // Sinon on prend la valeur manuelle fournie.
@@ -86,7 +92,9 @@ export async function editEntryHours(formData: FormData) {
     const diffMin = (eh * 60 + em) - (sh * 60 + sm) - break_minutes
     payload.hours_actual = Math.max(0, Math.round((diffMin / 60) * 100) / 100)
   } else if (hours_actual_override != null && !isNaN(hours_actual_override)) {
-    payload.hours_actual = hours_actual_override
+    // En mode saisie manuelle, si la case pause déjeuner est cochée on retranche 1h
+    payload.hours_actual = Math.max(0, Math.round((hours_actual_override - (deductLunch ? 1 : 0)) * 100) / 100)
+    if (deductLunch) payload.break_minutes = 60
   }
 
   await s.from('time_entries').update(payload).eq('id', entry_id)
