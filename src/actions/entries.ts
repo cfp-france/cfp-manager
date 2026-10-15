@@ -86,24 +86,39 @@ export async function editEntryHours(formData: FormData) {
     break_minutes = Math.max(break_minutes ?? 0, 60)
   }
 
-  // On recalcule toujours à partir de start/end/break si possible — c'est la source la plus fiable.
-  // Sinon seulement on utilise la valeur manuelle "Heures nettes".
+  // IMPORTANT : hours_actual est une colonne GENERATED en base — on ne peut pas l'écrire.
+  // On ajuste donc start / end / break_minutes et la base recalcule automatiquement.
+  //
+  // Si l'admin veut fixer un total précis via "Heures nettes" :
+  //   on garde actual_start, et on recalcule actual_end pour que
+  //   (end - start) - break = heures_voulues
   const payload: any = { adjustment_reason }
-  if (actual_start) payload.actual_start = actual_start
-  if (actual_end) payload.actual_end = actual_end
-  if (break_minutes != null && !isNaN(break_minutes)) payload.break_minutes = break_minutes
 
   let computedHours: number | null = null
+
   if (actual_start && actual_end && break_minutes != null && !isNaN(break_minutes)) {
+    // Mode "ajuster depuis start/end/break"
     const [sh, sm] = actual_start.split(':').map(Number)
     const [eh, em] = actual_end.split(':').map(Number)
     const diffMin = (eh * 60 + em) - (sh * 60 + sm) - break_minutes
     computedHours = Math.max(0, Math.round((diffMin / 60) * 100) / 100)
-    payload.hours_actual = computedHours
-  } else if (hours_actual_override != null && !isNaN(hours_actual_override)) {
-    computedHours = Math.max(0, Math.round((hours_actual_override - (deductLunch ? 1 : 0)) * 100) / 100)
-    payload.hours_actual = computedHours
-    if (deductLunch) payload.break_minutes = 60
+    payload.actual_start = actual_start
+    payload.actual_end = actual_end
+    payload.break_minutes = break_minutes
+  } else if (hours_actual_override != null && !isNaN(hours_actual_override) && actual_start) {
+    // Mode "fixer un total manuel" — on ajuste end_time pour atteindre ce total
+    const targetHours = Math.max(0, hours_actual_override - (deductLunch ? 1 : 0))
+    const brk = deductLunch ? 60 : (break_minutes ?? 60)
+    const [sh, sm] = actual_start.split(':').map(Number)
+    const totalMinNeeded = Math.round(targetHours * 60) + brk
+    const endMin = sh * 60 + sm + totalMinNeeded
+    const endH = Math.floor(endMin / 60)
+    const endM = endMin % 60
+    const newEnd = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`
+    payload.actual_start = actual_start
+    payload.actual_end = newEnd
+    payload.break_minutes = brk
+    computedHours = targetHours
   }
 
   const { error } = await s.from('time_entries').update(payload).eq('id', entry_id)
@@ -114,7 +129,7 @@ export async function editEntryHours(formData: FormData) {
   revalidatePath('/validation', 'page')
   revalidatePath('/dashboard')
   const msg = computedHours != null
-    ? `Saisie mise à jour : ${computedHours.toFixed(2).replace('.', 'h')}`
+    ? `Saisie mise à jour : ${Math.floor(computedHours)}h${String(Math.round((computedHours % 1) * 60)).padStart(2, '0')}`
     : 'Saisie mise à jour.'
   redirect('/validation?toast=' + encodeURIComponent(msg))
 }
