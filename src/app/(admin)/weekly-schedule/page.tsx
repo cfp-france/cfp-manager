@@ -283,8 +283,8 @@ function PlanningGrid({
   colorByTrainer: Record<string, { bg: string; border: string; text: string }>
 }) {
   return (
-    <div className="card p-0 overflow-hidden">
-      <div className="grid" style={{ gridTemplateColumns: '60px repeat(7, 1fr)' }}>
+    <div className="card p-0 overflow-visible">
+      <div className="grid overflow-visible" style={{ gridTemplateColumns: '60px repeat(7, 1fr)' }}>
         <div className="bg-gray-50 border-b border-gray-200 border-r" style={{ height: 32 }}></div>
         {DAYS.map(d => (
           <div key={d.num} className="bg-gray-50 border-b border-gray-200 text-center text-xs font-bold text-navy py-2" style={{ height: 32 }}>
@@ -368,7 +368,7 @@ function SlotCell({ slot, top, height, bg, border, text, leftPct, widthPct, trai
         {slot.kind === 'event' && <div className="truncate">{slot.label ?? 'Événement'}</div>}
       </summary>
       {/* Panneau d'édition : affiché hors du flux pour ne pas être tronqué par la hauteur du créneau */}
-      <div className="absolute left-0 right-0 top-full mt-1 p-2 bg-white border rounded shadow-xl text-[10px] space-y-1 w-[200px] max-w-[90vw] z-30"
+      <div className="absolute left-0 top-full mt-1 p-2 bg-white border rounded shadow-xl text-[10px] space-y-1 w-[220px] max-w-[90vw] z-50 max-h-[70vh] overflow-y-auto"
         style={{ borderColor: border }}>
         <EditForm slot={slot} trainers={trainers} formations={formations} cfaId={cfaId} />
       </div>
