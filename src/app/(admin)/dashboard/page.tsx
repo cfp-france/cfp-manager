@@ -295,17 +295,24 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
    })
    const trainerIdsInGrid = Array.from(new Set(gridEntries.map((e: any) => e.trainer_id).filter(Boolean)))
    const colorByTrainerDash = buildTrainerColorMap(trainerIdsInGrid)
-   const gridItems = gridEntries.map((e: any) => ({
-     session_date: e.work_date,
-     start_time: (e.session?.start_time ?? e.actual_start ?? '08:00').slice(0, 5),
-     end_time: (e.session?.end_time ?? e.actual_end ?? '09:00').slice(0, 5),
-     colorKey: e.trainer_id as string | null,
-     line2: `${e.trainer?.first_name ?? ''} ${e.trainer?.last_name ?? ''}`.trim() || 'Formateur',
-     line3: e.session?.mission?.name ?? e.session?.mission?.cfa?.name ?? e.session?.cfa?.name ?? 'Hors mission',
-     line4: `${fmtHours(Number(e.hours_actual ?? 0))}`,
-     href: `/entries/${e.id}`,
-     title: `Cliquer pour voir / modifier / dévalider — ${fmtHours(Number(e.hours_actual ?? 0))}`,
-   }))
+   const gridItems = gridEntries.map((e: any) => {
+     const m: any = e.session?.mission
+     const cfaObj: any = m?.cfa ?? e.session?.cfa
+     const cfaRateEff = Number(m?.cfa_hourly_rate) || Number(cfaObj?.default_hourly_rate) || 0
+     const trainerRateEff = Number(m?.trainer_hourly_rate) || Number(e.trainer?.hourly_rate_default) || 0
+     const h = Number(e.hours_actual ?? 0)
+     return {
+       session_date: e.work_date,
+       start_time: (e.session?.start_time ?? e.actual_start ?? '08:00').slice(0, 5),
+       end_time: (e.session?.end_time ?? e.actual_end ?? '09:00').slice(0, 5),
+       colorKey: e.trainer_id as string | null,
+       line2: `${e.trainer?.first_name ?? ''} ${e.trainer?.last_name ?? ''}`.trim() || 'Formateur',
+       line3: `${fmtHours(h)} · ${m?.name ?? cfaObj?.name ?? 'Hors mission'}`,
+       line4: `CFA ${cfaRateEff}€ / Form ${trainerRateEff}€`,
+       href: `/entries/${e.id}`,
+       title: `${fmtHours(h)} — Tarif CFA ${cfaRateEff}€/h · Tarif formateur ${trainerRateEff}€/h — cliquer pour voir / modifier / dévalider`,
+     }
+   })
 
    // Liste des lundis pour couvrir la plage (1 en mode semaine, 4-6 en mode mois)
    const mondays: Date[] = []
