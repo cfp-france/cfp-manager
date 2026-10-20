@@ -11,14 +11,26 @@ export const dynamic = 'force-dynamic'
 export default async function EditMissionPage({ params }: { params: { id: string } }) {
  const s = createClient()
 
- const [{ data: mission }, { data: cfas }, { data: formations }] = await Promise.all([
- s.from('missions')
- .select('*, cfa:cfa(name), mission_sessions(id, trainer_id, trainer:trainers(id, first_name, last_name, hourly_rate_default), time_entries(id, status))')
- .eq('id', params.id).single(),
- s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
- s.from('formations').select('id, code, name').is('archived_at', null).order('name'),
+ // Requête mission : on fait une requête simple sur la table + sous-requêtes séparées,
+ // pour éviter que la jointure imbriquée casse (et donc notFound()) à cause d'un pb RLS/relation.
+ const [{ data: missionRow, error: missionErr }, { data: cfas }, { data: formations }] = await Promise.all([
+  s.from('missions').select('*').eq('id', params.id).maybeSingle(),
+  s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
+  s.from('formations').select('id, code, name').is('archived_at', null).order('name'),
  ])
- if (!mission) notFound()
+ if (missionErr) console.error('[/missions/:id] missionErr', missionErr)
+ if (!missionRow) notFound()
+
+ // Enrichissement en requêtes séparées, résilient aux erreurs individuelles
+ const [{ data: cfaRow }, { data: msRows }] = await Promise.all([
+  missionRow.cfa_id
+   ? s.from('cfa').select('id, name').eq('id', missionRow.cfa_id).maybeSingle()
+   : Promise.resolve({ data: null }),
+  s.from('mission_sessions')
+   .select('id, trainer_id, trainer:trainers(id, first_name, last_name, hourly_rate_default), time_entries(id, status)')
+   .eq('mission_id', missionRow.id),
+ ])
+ const mission: any = { ...missionRow, cfa: cfaRow, mission_sessions: msRows ?? [] }
 
  // Formateurs effectivement positionnés sur les séances de la mission + tarif effectif appliqué
  const trainerMap = new Map<string, { first_name: string; last_name: string; hourly_rate_default: number | null }>()
