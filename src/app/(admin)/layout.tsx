@@ -7,12 +7,13 @@ import { Suspense } from 'react'
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
  const { profile } = await requireAdmin()
  const s = createClient()
- const [{ count: pending }, { count: absPending }, { count: subsPending }, { count: approvalsPending }, { count: invoicesPending }] = await Promise.all([
+ const [{ count: pending }, { count: absPending }, { count: subsPending }, { count: approvalsPending }, { count: invoicesPending }, { count: deletionPending }] = await Promise.all([
  s.from('time_entries').select('*', { count: 'exact', head: true }).eq('status', 'submitted'),
  s.from('trainer_absences').select('*', { count: 'exact', head: true }).eq('status', 'submitted'),
  s.from('mission_sessions').select('*', { count: 'exact', head: true }).eq('needs_substitution', true),
  s.from('profiles').select('*', { count: 'exact', head: true }).eq('approval_status', 'pending'),
  s.from('trainer_invoices').select('*', { count: 'exact', head: true }).in('status', ['sent','draft']),
+ s.from('deletion_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
  ])
 
  const sections = [
@@ -33,6 +34,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
  { href: '/validation', label: 'Validation des heures', badge: pending ?? 0 },
  { href: '/absences', label: 'Absences déclarées', badge: absPending ?? 0 },
  { href: '/substitutions', label: 'Remplacements', badge: subsPending ?? 0 },
+ { href: '/deletion-requests', label: 'Demandes de suppression', badge: deletionPending ?? 0 },
  { href: '/pedagogy', label: 'Suivi pédagogique' },
  { href: '/invoicing', label: 'Facturation', badge: invoicesPending ?? 0 },
  ]},

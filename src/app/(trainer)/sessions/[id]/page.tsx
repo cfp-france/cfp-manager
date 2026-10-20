@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtHours, requireTrainer } from '@/lib/utils'
 import { submitTimeEntry, deleteMyEntry } from '@/actions/entries'
+import { requestDeletion, cancelDeletionRequest } from '@/actions/deletion-requests'
 import { updateMySession } from '@/actions/sessions'
 import { notFound } from 'next/navigation'
 import { PedagogyPicker } from '@/components/PedagogyPicker'
@@ -42,6 +43,26 @@ export default async function SessionEditPage({ params }: { params: { id: string
 
  const existing = session.time_entries?.[0]
  const disabled = existing?.status === 'validated'
+
+ // Demande de suppression en cours sur cette séance ?
+ const { data: pendingDeletion } = await s.from('deletion_requests')
+  .select('id, reason, status, admin_comment, created_at')
+  .eq('target_type', 'session').eq('target_id', session.id)
+  .in('status', ['pending','rejected'])
+  .order('created_at', { ascending: false })
+  .limit(1)
+  .maybeSingle()
+ // Demande de suppression en cours sur la mission liée ?
+ const { data: pendingMissionDeletion } = session.mission_id
+  ? await s.from('deletion_requests')
+    .select('id, reason, status, admin_comment, created_at')
+    .eq('target_type', 'mission').eq('target_id', session.mission_id)
+    .in('status', ['pending','rejected'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  : { data: null }
+ const returnTo = `/sessions/${session.id}`
  const initialBlockNumber: number | undefined = (existing?.competence_blocks_targeted ?? [])[0]
  const initialSkillIds: string[] = existing?.skill_ids ?? []
 
@@ -134,6 +155,87 @@ export default async function SessionEditPage({ params }: { params: { id: string
  </div>
  <button className="btn btn-sm btn-danger">Supprimer</button>
  </form>
+ )}
+
+ {/* Demander à l'admin la suppression de la séance planifiée (quand ce n'est pas une séance auto-déclarée) */}
+ {!session.self_declared && (
+  <div className="mt-3 bg-amber-50 border-l-4 border-amber-500 p-3 rounded">
+   {pendingDeletion?.status === 'pending' ? (
+    <div className="flex items-start justify-between gap-3">
+     <div className="text-xs text-amber-900">
+      <div className="font-semibold">Demande de suppression en attente</div>
+      <div className="mt-1">Motif envoyé : <i>{pendingDeletion.reason ?? '—'}</i></div>
+      <div className="text-[10px] text-gray-600">Soumise le {fmtDate(pendingDeletion.created_at)}. L'admin vous notifiera.</div>
+     </div>
+     <form action={cancelDeletionRequest}>
+      <input type="hidden" name="id" value={pendingDeletion.id} />
+      <input type="hidden" name="return_to" value={returnTo} />
+      <button className="btn btn-sm btn-outline">Annuler la demande</button>
+     </form>
+    </div>
+   ) : (
+    <>
+     {pendingDeletion?.status === 'rejected' && (
+      <div className="text-xs text-red-700 mb-2">
+       <b>Demande précédente refusée :</b> {pendingDeletion.admin_comment ?? '—'}
+      </div>
+     )}
+     <details>
+      <summary className="cursor-pointer text-xs font-semibold text-amber-900">
+       Demander à l'administrateur la suppression de cette séance planifiée (doublon, erreur…)
+      </summary>
+      <form action={requestDeletion} className="mt-2 space-y-2">
+       <input type="hidden" name="target_type" value="session" />
+       <input type="hidden" name="target_id" value={session.id} />
+       <input type="hidden" name="return_to" value={returnTo} />
+       <textarea name="reason" rows={2} required placeholder="Motif (ex : doublon avec la séance du …, erreur de planning)"
+        className="w-full border rounded px-2 py-1 text-xs" />
+       <button className="btn btn-sm btn-outline">Envoyer la demande à l'admin</button>
+      </form>
+     </details>
+    </>
+   )}
+  </div>
+ )}
+
+ {/* Demande de suppression de la MISSION entière (si séance liée à une mission) */}
+ {session.mission_id && (
+  <div className="mt-3 bg-red-50 border-l-4 border-red-700 p-3 rounded">
+   {pendingMissionDeletion?.status === 'pending' ? (
+    <div className="flex items-start justify-between gap-3">
+     <div className="text-xs text-red-900">
+      <div className="font-semibold">Demande de suppression de la mission <i>{session.mission?.name}</i> en attente</div>
+      <div className="mt-1">Motif : <i>{pendingMissionDeletion.reason ?? '—'}</i></div>
+     </div>
+     <form action={cancelDeletionRequest}>
+      <input type="hidden" name="id" value={pendingMissionDeletion.id} />
+      <input type="hidden" name="return_to" value={returnTo} />
+      <button className="btn btn-sm btn-outline">Annuler la demande</button>
+     </form>
+    </div>
+   ) : (
+    <>
+     {pendingMissionDeletion?.status === 'rejected' && (
+      <div className="text-xs text-red-700 mb-2">
+       <b>Demande précédente refusée :</b> {pendingMissionDeletion.admin_comment ?? '—'}
+      </div>
+     )}
+     <details>
+      <summary className="cursor-pointer text-xs font-semibold text-red-900">
+       Demander la suppression de la mission entière « {session.mission?.name} » (toutes les séances seront supprimées)
+      </summary>
+      <form action={requestDeletion} className="mt-2 space-y-2">
+       <input type="hidden" name="target_type" value="mission" />
+       <input type="hidden" name="target_id" value={session.mission_id} />
+       <input type="hidden" name="return_to" value={returnTo} />
+       <textarea name="reason" rows={2} required placeholder="Motif détaillé (ex : mission doublon, créée par erreur)"
+        className="w-full border rounded px-2 py-1 text-xs" />
+       <button className="btn btn-sm btn-danger">Envoyer la demande à l'admin</button>
+      </form>
+     </details>
+    </>
+   )}
+  </div>
  )}
 
  <div className="mt-5">
