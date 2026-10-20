@@ -18,6 +18,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
  const sections = [
  { title: 'Mon espace', items: [
  { href: '/home', label: 'Accueil' },
+ { href: '/planning', label: 'Mon planning' },
  { href: '/sessions', label: 'Saisir mes séances', badge: toSubmit },
  { href: '/declare-session', label: 'Déclarer une séance' },
  { href: '/availability', label: 'Mes disponibilités' },
