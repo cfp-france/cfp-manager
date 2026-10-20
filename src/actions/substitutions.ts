@@ -63,23 +63,41 @@ export async function assignTrainerForTemplateOccurrence(formData: FormData) {
  const norm = (t: string) => t.length === 5 ? t + ':00' : t
  const st = norm(start_time)
 
- // Cherche une mission_session existante pour la même date/horaire/CFA
- const { data: existing } = await s.from('mission_sessions')
+ // Cherche TOUTES les mission_sessions existantes pour la même date/horaire/CFA
+ // (si plusieurs existent par doublon historique → on les met toutes à jour, pas de nouvelle insertion)
+ const { data: existingRows, error: lookupErr } = await s.from('mission_sessions')
   .select('id, trainer_id, mission_id')
   .eq('session_date', session_date)
   .eq('cfa_id', cfa_id)
   .eq('start_time', st)
-  .maybeSingle()
+ if (lookupErr) {
+  console.error('[assignTrainerForTemplateOccurrence] lookup', lookupErr)
+ }
 
- let targetSessionId: string | null = existing?.id ?? null
- const prevTrainerId = existing?.trainer_id ?? null
+ let targetSessionId: string | null = null
+ let prevTrainerId: string | null = null
 
- if (!targetSessionId) {
+ if (existingRows && existingRows.length > 0) {
+  // Mise à jour en masse sur tous les doublons éventuels
+  const ids = existingRows.map((r: any) => r.id)
+  prevTrainerId = (existingRows[0] as any).trainer_id ?? null
+  const { error: updErr } = await s.from('mission_sessions').update({
+   trainer_id: new_trainer_id,
+   needs_substitution: new_trainer_id === null,
+  }).in('id', ids)
+  if (updErr) {
+   console.error('[assignTrainerForTemplateOccurrence] update', updErr)
+   const sep = return_to.includes('?') ? '&' : '?'
+   redirect(return_to + sep + 'toast=' + encodeURIComponent('Erreur mise à jour : ' + updErr.message) + '&toast_type=error')
+  }
+  targetSessionId = ids[0]
+ } else {
   // Création à la volée : récupérer une mission par défaut du CFA (optionnel)
-  const { data: defaultMission } = await s.from('missions')
-   .select('id').eq('cfa_id', cfa_id).is('archived_at', null).limit(1).maybeSingle()
+  const { data: defaultMissions } = await s.from('missions')
+   .select('id').eq('cfa_id', cfa_id).is('archived_at', null).limit(1)
+  const defaultMissionId = defaultMissions?.[0]?.id ?? null
   const { data: created, error } = await s.from('mission_sessions').insert({
-   mission_id: defaultMission?.id ?? null,
+   mission_id: defaultMissionId,
    cfa_id,
    session_date,
    start_time: st,
@@ -90,16 +108,11 @@ export async function assignTrainerForTemplateOccurrence(formData: FormData) {
    needs_substitution: new_trainer_id === null,
   }).select('id').single()
   if (error || !created) {
+   console.error('[assignTrainerForTemplateOccurrence] insert', error)
    const sep = return_to.includes('?') ? '&' : '?'
    redirect(return_to + sep + 'toast=' + encodeURIComponent('Erreur création séance : ' + (error?.message ?? 'inconnue')) + '&toast_type=error')
   }
   targetSessionId = created.id
- } else {
-  // Mise à jour trainer_id sur la séance existante
-  await s.from('mission_sessions').update({
-   trainer_id: new_trainer_id,
-   needs_substitution: new_trainer_id === null,
-  }).eq('id', targetSessionId)
  }
 
  // Trace dans session_substitutions
