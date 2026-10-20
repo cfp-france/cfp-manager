@@ -41,7 +41,12 @@ export default async function SessionEditPage({ params }: { params: { id: string
  })),
  }))
 
- const existing = session.time_entries?.[0]
+ // Supabase renvoie parfois time_entries comme un objet (1:1) et parfois comme un tableau (1:N).
+ // On normalise et on garde la saisie la plus pertinente (validée > soumise > brouillon > refusée).
+ const timeEntriesRaw = session.time_entries
+ const timeEntries = Array.isArray(timeEntriesRaw) ? timeEntriesRaw : (timeEntriesRaw ? [timeEntriesRaw] : [])
+ const statusPrio = (st: string) => ({ validated: 4, submitted: 3, draft: 2, refused: 1 } as Record<string, number>)[st] ?? 0
+ const existing = [...timeEntries].sort((a: any, b: any) => statusPrio(b?.status) - statusPrio(a?.status))[0]
  const disabled = existing?.status === 'validated'
 
  // Demande de suppression en cours sur cette séance ?
@@ -73,6 +78,14 @@ export default async function SessionEditPage({ params }: { params: { id: string
 
  {disabled && <div className="bg-green-50 border-l-4 border-green-500 p-3 rounded mb-4 text-sm">Cette saisie a été validée par l'administration et ne peut plus être modifiée.</div>}
  {existing?.status === 'refused' && <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded mb-4 text-sm">Refusée. Motif : {existing.admin_comment}. Vous pouvez re-soumettre.</div>}
+ {existing && !disabled && (
+  <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded mb-4 text-sm">
+   <b>Vos données précédentes sont préremplies ci-dessous</b>
+   {existing.status === 'draft' && ' (brouillon enregistré).'}
+   {existing.status === 'submitted' && ' (soumise, en attente de validation admin).'}
+   {' '}Modifiez uniquement ce qui change puis re-soumettez — rien n'est perdu.
+  </div>
+ )}
 
  {/* Édition date/horaires/salle de la séance */}
  <form action={updateMySession} className="card mb-5">

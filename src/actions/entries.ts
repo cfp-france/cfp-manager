@@ -35,7 +35,14 @@ export async function submitTimeEntry(formData: FormData) {
  status: isDraft ? 'draft' : 'submitted',
  }
 
- const { data: existing } = await s.from('time_entries').select('id').eq('session_id', session_id).maybeSingle()
+ // Robustesse : s'il existait plusieurs lignes (bug historique), on prend la plus récente
+ // et on l'update plutôt que d'en créer une nouvelle qui écraserait les anciennes données affichées.
+ const { data: existingRows } = await s.from('time_entries')
+   .select('id, status')
+   .eq('session_id', session_id)
+   .order('created_at', { ascending: false })
+   .limit(1)
+ const existing = existingRows?.[0]
  if (existing) {
  await s.from('time_entries').update(payload).eq('id', existing.id)
  } else {
