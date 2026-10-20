@@ -53,37 +53,47 @@ export async function assignTrainerForTemplateOccurrence(formData: FormData) {
  const trainer_id_raw = (formData.get('trainer_id') as string) || ''
  const new_trainer_id = trainer_id_raw === '' ? null : trainer_id_raw
  const return_to = (formData.get('return_to') as string) || '/planning'
+ const template_slot_id = (formData.get('template_slot_id') as string) || null
 
  if (!cfa_id || !session_date || !start_time || !end_time) {
   const sep = return_to.includes('?') ? '&' : '?'
   redirect(return_to + sep + 'toast=' + encodeURIComponent('Infos manquantes.') + '&toast_type=error')
  }
 
- // Normalise HH:MM:SS vs HH:MM
  const norm = (t: string) => t.length === 5 ? t + ':00' : t
  const st = norm(start_time)
 
- // Cherche TOUTES les mission_sessions existantes pour la même date/horaire/CFA
- // (si plusieurs existent par doublon historique → on les met toutes à jour, pas de nouvelle insertion)
- const { data: existingRows, error: lookupErr } = await s.from('mission_sessions')
-  .select('id, trainer_id, mission_id')
-  .eq('session_date', session_date)
-  .eq('cfa_id', cfa_id)
-  .eq('start_time', st)
- if (lookupErr) {
-  console.error('[assignTrainerForTemplateOccurrence] lookup', lookupErr)
+ // 1. Priorité : chercher via source_template_slot_id (unique identifiant du créneau récurrent)
+ let existingRows: any[] = []
+ if (template_slot_id) {
+  const { data: byTemplate } = await s.from('mission_sessions')
+   .select('id, trainer_id, mission_id')
+   .eq('session_date', session_date)
+   .eq('source_template_slot_id', template_slot_id)
+  if (byTemplate && byTemplate.length > 0) existingRows = byTemplate
+ }
+ // 2. Fallback : si pas trouvé (données historiques), chercher par date/horaire/CFA
+ if (existingRows.length === 0) {
+  const { data: byTime } = await s.from('mission_sessions')
+   .select('id, trainer_id, mission_id, source_template_slot_id')
+   .eq('session_date', session_date)
+   .eq('cfa_id', cfa_id)
+   .eq('start_time', st)
+  // On ne garde QUE les sessions sans source_template_slot_id (séances « génériques » historiques)
+  // pour éviter d'écraser une autre session associée à un AUTRE créneau récurrent (classe parallèle)
+  if (byTime) existingRows = byTime.filter((r: any) => !r.source_template_slot_id)
  }
 
  let targetSessionId: string | null = null
  let prevTrainerId: string | null = null
 
- if (existingRows && existingRows.length > 0) {
-  // Mise à jour en masse sur tous les doublons éventuels
+ if (existingRows.length > 0) {
   const ids = existingRows.map((r: any) => r.id)
-  prevTrainerId = (existingRows[0] as any).trainer_id ?? null
+  prevTrainerId = existingRows[0].trainer_id ?? null
   const { error: updErr } = await s.from('mission_sessions').update({
    trainer_id: new_trainer_id,
    needs_substitution: new_trainer_id === null,
+   source_template_slot_id: template_slot_id,
   }).in('id', ids)
   if (updErr) {
    console.error('[assignTrainerForTemplateOccurrence] update', updErr)
@@ -92,7 +102,6 @@ export async function assignTrainerForTemplateOccurrence(formData: FormData) {
   }
   targetSessionId = ids[0]
  } else {
-  // Création à la volée : récupérer une mission par défaut du CFA (optionnel)
   const { data: defaultMissions } = await s.from('missions')
    .select('id').eq('cfa_id', cfa_id).is('archived_at', null).limit(1)
   const defaultMissionId = defaultMissions?.[0]?.id ?? null
@@ -106,6 +115,7 @@ export async function assignTrainerForTemplateOccurrence(formData: FormData) {
    room,
    trainer_id: new_trainer_id,
    needs_substitution: new_trainer_id === null,
+   source_template_slot_id: template_slot_id,
   }).select('id').single()
   if (error || !created) {
    console.error('[assignTrainerForTemplateOccurrence] insert', error)

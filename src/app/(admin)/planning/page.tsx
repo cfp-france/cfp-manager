@@ -85,7 +85,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
   ] = await Promise.all([
     s.from('cfa').select('id, name, city, default_hourly_rate').is('archived_at', null).order('name'),
     s.from('mission_sessions')
-      .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, mission_id, needs_substitution, break_minutes')
+      .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, mission_id, needs_substitution, break_minutes, source_template_slot_id')
       .gte('session_date', iso(monday))
       .lte('session_date', iso(sunday))
       .order('session_date').order('start_time'),
@@ -130,19 +130,18 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
 
   const cfaFilterOk = (cfaId: string | null | undefined) => !cfaFilter || cfaId === cfaFilter
 
-  const concreteByKey = new Set<string>()
+  // Dédup : on identifie les créneaux récurrents déjà instanciés via source_template_slot_id
+  // Chaque template T a un id unique. Si une session concrète pointe vers T pour la date D,
+  // le template est caché pour ce jour-là (mais pas pour les autres jours ni pour les autres templates).
+  const instantiatedTemplateByDate = new Set<string>()   // ex. "2026-10-21|<template_slot_id>"
   const items: any[] = []
 
   for (const se of sessions ?? []) {
     const cfaId = (se as any).mission?.cfa?.id ?? (se as any).cfa?.id ?? (se as any).cfa_id ?? null
     if (!cfaFilterOk(cfaId)) continue
-    // On enregistre PLUSIEURS clés de dédup pour couvrir le cas où la cfa_id de la
-    // mission_session diffère de celle du template (ex: mission générique partagée)
-    const key = `${(se as any).session_date}|${(se as any).start_time?.slice(0,5)}|${cfaId}`
-    concreteByKey.add(key)
-    // Clé additionnelle sans cfa (date + horaire) pour matcher même si l'instanciation
-    // a utilisé un autre cfa_id → évite d'afficher le template en doublon
-    concreteByKey.add(`${(se as any).session_date}|${(se as any).start_time?.slice(0,5)}|*`)
+    if ((se as any).source_template_slot_id) {
+      instantiatedTemplateByDate.add(`${(se as any).session_date}|${(se as any).source_template_slot_id}`)
+    }
     items.push({
       kind: 'real',
       session_id: (se as any).id,
@@ -167,11 +166,12 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
       if ((sl as any).weekday !== pgWeekday) continue
       const cfaId = (sl as any).cfa_id
       if (!cfaFilterOk(cfaId)) continue
-      const key = `${date}|${(sl as any).start_time?.slice(0,5)}|${cfaId}`
-      const wildcardKey = `${date}|${(sl as any).start_time?.slice(0,5)}|*`
-      if (concreteByKey.has(key) || concreteByKey.has(wildcardKey)) continue
+      // Masquer uniquement si CE créneau précis a été instancié pour CE jour
+      const instantiatedKey = `${date}|${(sl as any).id}`
+      if (instantiatedTemplateByDate.has(instantiatedKey)) continue
       items.push({
         kind: 'template',
+        template_slot_id: (sl as any).id,
         session_date: date,
         start_time: (sl as any).start_time?.slice(0,5),
         end_time: (sl as any).end_time?.slice(0,5),
@@ -436,6 +436,7 @@ function WeekGrid({
                         <>
                           <form action={assignTrainerForTemplateOccurrence} className="space-y-1">
                             <input type="hidden" name="cfa_id" value={item.cfa?.id ?? ''} />
+                            <input type="hidden" name="template_slot_id" value={item.template_slot_id ?? ''} />
                             <input type="hidden" name="session_date" value={item.session_date} />
                             <input type="hidden" name="start_time" value={item.start_time} />
                             <input type="hidden" name="end_time" value={item.end_time} />
@@ -457,6 +458,7 @@ function WeekGrid({
                           {item.trainer && (
                             <form action={assignTrainerForTemplateOccurrence} className="pt-1 border-t border-gray-200">
                               <input type="hidden" name="cfa_id" value={item.cfa?.id ?? ''} />
+                              <input type="hidden" name="template_slot_id" value={item.template_slot_id ?? ''} />
                               <input type="hidden" name="session_date" value={item.session_date} />
                               <input type="hidden" name="start_time" value={item.start_time} />
                               <input type="hidden" name="end_time" value={item.end_time} />
