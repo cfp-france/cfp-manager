@@ -1,6 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { updateMission, archiveMission, unarchiveMission } from '@/actions/missions'
+import { editEntryHours, unvalidateEntry } from '@/actions/entries'
 import { fmtDate, fmtHours } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -10,14 +11,25 @@ export const dynamic = 'force-dynamic'
 export default async function EditMissionPage({ params }: { params: { id: string } }) {
  const s = createClient()
 
- const [{ data: mission }, { data: cfas }, { data: formations }] = await Promise.all([
+ const [{ data: mission }, { data: cfas }, { data: formations }, { data: entries }] = await Promise.all([
  s.from('missions')
  .select('*, cfa:cfa(name), mission_sessions(id, time_entries(id, status))')
  .eq('id', params.id).single(),
  s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
  s.from('formations').select('id, code, name').is('archived_at', null).order('name'),
+ s.from('time_entries')
+ .select(`id, status, work_date, hours_actual, actual_start, actual_end, break_minutes,
+ adjustment_reason, content_covered, work_done, points_to_review, program_completion,
+ trainer:trainers(first_name, last_name),
+ session:mission_sessions!inner(id, mission_id, session_date, start_time, end_time, room)`)
+ .eq('session.mission_id', params.id)
+ .order('work_date', { ascending: false }),
  ])
  if (!mission) notFound()
+
+ const validatedEntries = (entries ?? []).filter((e: any) => e.status === 'validated')
+ const totalValidatedHours = validatedEntries.reduce((s, e: any) => s + Number(e.hours_actual ?? 0), 0)
+ const returnTo = `/missions/${params.id}`
 
  const nbSessions = mission.mission_sessions?.length ?? 0
  const nbValidated = (mission.mission_sessions ?? []).reduce((acc: number, se: any) =>
@@ -125,6 +137,88 @@ export default async function EditMissionPage({ params }: { params: { id: string
  </div>
  </div>
  </form>
+
+ {/* Saisies validées sur cette mission */}
+ <div className="card mt-6">
+  <div className="card-header">
+   <div>
+    <div className="card-title">Saisies validées sur cette mission ({validatedEntries.length})</div>
+    <div className="text-xs text-gray-500 mt-0.5">
+     Total : <b>{fmtHours(totalValidatedHours)}</b> validées. Vous pouvez modifier les heures d'une saisie ou la dévalider.
+    </div>
+   </div>
+  </div>
+  <div className="card-body p-0 overflow-visible">
+   {validatedEntries.length === 0 ? (
+    <div className="text-center text-gray-500 py-6 text-sm">Aucune saisie validée pour l'instant sur cette mission.</div>
+   ) : (
+    <table className="w-full text-xs">
+     <thead>
+      <tr>
+       <th>Date</th><th>Formateur</th><th>Horaires</th><th>Pause</th><th>Heures nettes</th>
+       <th>Contenu couvert</th><th className="w-[260px]">Actions</th>
+      </tr>
+     </thead>
+     <tbody>
+      {validatedEntries.map((e: any) => (
+       <tr key={e.id} className="align-top">
+        <td>{fmtDate(e.work_date)}</td>
+        <td>{e.trainer?.first_name} {e.trainer?.last_name}</td>
+        <td>{e.actual_start?.slice(0,5)} - {e.actual_end?.slice(0,5)}</td>
+        <td>{e.break_minutes ?? 0} min</td>
+        <td className="font-semibold">{fmtHours(Number(e.hours_actual ?? 0))}</td>
+        <td className="max-w-[260px]">
+         <div className="whitespace-pre-wrap">{e.content_covered ?? <span className="text-gray-400 italic">—</span>}</div>
+         {e.work_done && <div className="text-[10px] text-gray-600 mt-1"><b>Travail fait :</b> {e.work_done}</div>}
+         {e.points_to_review && <div className="text-[10px] text-amber-700 mt-1"><b>À revoir :</b> {e.points_to_review}</div>}
+         {e.program_completion != null && (
+          <div className="text-[10px] text-gray-500 mt-1">Avancement programme : {e.program_completion}%</div>
+         )}
+        </td>
+        <td>
+         <details className="relative inline-block">
+          <summary className="btn btn-sm btn-outline cursor-pointer list-none">Modifier les heures</summary>
+          <form action={editEntryHours} className="absolute right-0 bg-white border rounded-md shadow-lg p-3 mt-1 z-10 space-y-1 w-[280px]">
+           <input type="hidden" name="entry_id" value={e.id} />
+           <input type="hidden" name="return_to" value={returnTo} />
+           <div className="flex gap-1">
+            <div className="flex-1">
+             <label className="text-[10px] font-semibold">Début</label>
+             <input type="time" name="actual_start" defaultValue={e.actual_start?.slice(0,5)} className="w-full border rounded px-1 py-0.5 text-xs" />
+            </div>
+            <div className="flex-1">
+             <label className="text-[10px] font-semibold">Fin</label>
+             <input type="time" name="actual_end" defaultValue={e.actual_end?.slice(0,5)} className="w-full border rounded px-1 py-0.5 text-xs" />
+            </div>
+           </div>
+           <div>
+            <label className="text-[10px] font-semibold">Pause (min)</label>
+            <input type="number" name="break_minutes" defaultValue={e.break_minutes ?? 60} className="w-full border rounded px-1 py-0.5 text-xs" />
+           </div>
+           <label className="flex items-center gap-1 text-[10px]">
+            <input type="checkbox" name="deduct_lunch" value="1" />
+            Forcer 1h de pause déjeuner
+           </label>
+           <div>
+            <label className="text-[10px] font-semibold">Motif d'ajustement</label>
+            <input type="text" name="adjustment_reason" defaultValue={e.adjustment_reason ?? ''} className="w-full border rounded px-1 py-0.5 text-xs" />
+           </div>
+           <button className="btn btn-sm btn-primary w-full">Enregistrer</button>
+          </form>
+         </details>
+         <form action={unvalidateEntry} className="inline-block ml-1">
+          <input type="hidden" name="entry_id" value={e.id} />
+          <input type="hidden" name="return_to" value={returnTo} />
+          <button className="btn btn-sm btn-outline" title="Remettre en file de validation">↺ Dévalider</button>
+         </form>
+        </td>
+       </tr>
+      ))}
+     </tbody>
+    </table>
+   )}
+  </div>
+ </div>
  </div>
  )
 }

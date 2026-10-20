@@ -128,10 +128,12 @@ export async function editEntryHours(formData: FormData) {
   }
   revalidatePath('/validation', 'page')
   revalidatePath('/dashboard')
+  const return_to = (formData.get('return_to') as string) || '/validation'
   const msg = computedHours != null
     ? `Saisie mise à jour : ${Math.floor(computedHours)}h${String(Math.round((computedHours % 1) * 60)).padStart(2, '0')}`
     : 'Saisie mise à jour.'
-  redirect('/validation?toast=' + encodeURIComponent(msg))
+  const sep = return_to.includes('?') ? '&' : '?'
+  redirect(return_to + sep + 'toast=' + encodeURIComponent(msg))
 }
 
 /**
@@ -182,7 +184,9 @@ export async function unvalidateEntry(formData: FormData) {
  }).eq('id', entry_id)
  revalidatePath('/validation')
  revalidatePath('/dashboard')
- redirect('/dashboard?toast=' + encodeURIComponent('Saisie dévalidée. Elle retourne en file d\'attente.') + '&toast_type=info')
+ const return_to = (formData.get('return_to') as string) || '/dashboard'
+ const sep = return_to.includes('?') ? '&' : '?'
+ redirect(return_to + sep + 'toast=' + encodeURIComponent('Saisie dévalidée. Elle retourne en file d\'attente.') + '&toast_type=info')
 }
 
 /**

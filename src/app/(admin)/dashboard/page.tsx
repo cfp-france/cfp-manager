@@ -235,20 +235,31 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  <tbody>
  {entries.slice(0, 50).map((e: any) => {
  const cfaName = e.session?.mission?.cfa?.name ?? e.session?.cfa?.name ?? '—'
+ const missionName = e.session?.mission?.name
+ const missionId = e.session?.mission_id
  return (
  <tr key={e.id}>
  <td className="text-xs">{fmtDate(e.work_date)}</td>
  <td className="text-xs">{e.trainer?.first_name} {e.trainer?.last_name}</td>
  <td className="text-xs">
- <div>{e.session?.mission?.name ?? <span className="italic text-gray-400">Hors mission</span>}</div>
+ <div>
+ {missionName && missionId
+ ? <Link href={`/missions/${missionId}`} className="text-brand font-semibold hover:underline" title="Ouvrir la fiche mission">{missionName}</Link>
+ : <span className="italic text-gray-400">Hors mission</span>}
+ </div>
  <div className="text-gray-500">{cfaName}</div>
  </td>
  <td>{fmtHours(Number(e.hours_actual ?? 0))}</td>
  <td>
+ <div className="flex gap-1">
+ {missionId && (
+ <Link href={`/missions/${missionId}`} className="btn btn-sm btn-outline" title="Voir la fiche mission et les saisies">Voir mission</Link>
+ )}
  <form action={unvalidateEntry}>
  <input type="hidden" name="entry_id" value={e.id} />
  <button className="btn btn-sm btn-outline" title="Remettre cette saisie en attente de validation">↺ Dévalider</button>
  </form>
+ </div>
  </td>
  </tr>
  )
