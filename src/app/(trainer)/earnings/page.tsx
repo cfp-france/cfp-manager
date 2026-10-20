@@ -14,7 +14,7 @@ export default async function EarningsPage() {
  .eq('status', 'validated').gte('work_date', monthStart).order('work_date')
 
  const total = (rows ?? []).reduce((a: number, r: any) => {
- const rate = Number(r.session?.mission?.trainer_hourly_rate ?? trainer?.hourly_rate_default ?? 0)
+ const rate = Number(r.session?.mission?.trainer_hourly_rate) || Number(trainer?.hourly_rate_default) || 0
  return a + Number(r.hours_actual) * rate
  }, 0)
 
@@ -32,7 +32,7 @@ export default async function EarningsPage() {
  <thead><tr><th>Date</th><th>Mission</th><th>Heures</th><th>Tarif</th><th>Montant</th></tr></thead>
  <tbody>
  {rows?.map((r: any) => {
- const rate = Number(r.session?.mission?.trainer_hourly_rate ?? trainer?.hourly_rate_default ?? 0)
+ const rate = Number(r.session?.mission?.trainer_hourly_rate) || Number(trainer?.hourly_rate_default) || 0
  return (
  <tr key={r.id}>
  <td>{fmtDate(r.work_date)}</td>

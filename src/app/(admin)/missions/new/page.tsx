@@ -57,7 +57,7 @@ export default async function NewMissionPage() {
  <div className="field"><label>Début *</label><input name="start_date" type="date" required /></div>
  <div className="field"><label>Fin *</label><input name="end_date" type="date" required /></div>
  <div className="field"><label>Tarif CFA (€/h) *</label><input name="cfa_hourly_rate" type="number" step="0.01" required /></div>
- <div className="field"><label>Tarif formateur (€/h) *</label><input name="trainer_hourly_rate" type="number" step="0.01" required /></div>
+ <div className="field"><label>Tarif formateur (€/h)</label><input name="trainer_hourly_rate" type="number" step="0.01" min="0" placeholder="Vide = tarif par défaut du formateur" /><p className="text-[11px] text-gray-500 mt-1">Si vide : chaque formateur sera rémunéré à son tarif indiqué sur sa fiche.</p></div>
  </div>
  </div>
 

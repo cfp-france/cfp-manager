@@ -13,12 +13,22 @@ export default async function EditMissionPage({ params }: { params: { id: string
 
  const [{ data: mission }, { data: cfas }, { data: formations }] = await Promise.all([
  s.from('missions')
- .select('*, cfa:cfa(name), mission_sessions(id, time_entries(id, status))')
+ .select('*, cfa:cfa(name), mission_sessions(id, trainer_id, trainer:trainers(id, first_name, last_name, hourly_rate_default), time_entries(id, status))')
  .eq('id', params.id).single(),
  s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
  s.from('formations').select('id, code, name').is('archived_at', null).order('name'),
  ])
  if (!mission) notFound()
+
+ // Formateurs effectivement positionnés sur les séances de la mission + tarif effectif appliqué
+ const trainerMap = new Map<string, { first_name: string; last_name: string; hourly_rate_default: number | null }>()
+ for (const se of (mission.mission_sessions ?? []) as any[]) {
+  if (se.trainer?.id && !trainerMap.has(se.trainer.id)) {
+   trainerMap.set(se.trainer.id, se.trainer)
+  }
+ }
+ const assignedTrainers = Array.from(trainerMap.values())
+ const missionTrainerRate = Number(mission.trainer_hourly_rate) || 0
 
  // Saisies validées de la mission : on récupère via les séances de la mission
  const sessionIds = (mission.mission_sessions ?? []).map((se: any) => se.id)
@@ -103,8 +113,27 @@ export default async function EditMissionPage({ params }: { params: { id: string
  <input name="cfa_hourly_rate" type="number" step="0.01" required defaultValue={mission.cfa_hourly_rate} />
  </div>
  <div className="field">
- <label>Tarif formateur (€ HT / h) *</label>
- <input name="trainer_hourly_rate" type="number" step="0.01" required defaultValue={mission.trainer_hourly_rate} />
+ <label>Tarif formateur (€ HT / h)</label>
+ <input name="trainer_hourly_rate" type="number" step="0.01" min="0"
+  defaultValue={mission.trainer_hourly_rate ?? ''}
+  placeholder="Vide = tarif par défaut du formateur" />
+ <p className="text-[11px] text-gray-500 mt-1">
+  <b>Laissez vide ou mettez 0</b> pour utiliser automatiquement le tarif par défaut indiqué sur la fiche de chaque formateur affecté.
+ </p>
+ {assignedTrainers.length > 0 && (
+  <div className="mt-2 bg-brand-light/40 rounded p-2 text-[11px] space-y-0.5">
+   <div className="font-semibold text-navy">Tarifs effectivement appliqués :</div>
+   {assignedTrainers.map(t => {
+    const effective = missionTrainerRate > 0 ? missionTrainerRate : (Number(t.hourly_rate_default) || 0)
+    const source = missionTrainerRate > 0 ? 'tarif mission' : (Number(t.hourly_rate_default) > 0 ? 'tarif par défaut formateur' : 'AUCUN TARIF')
+    return (
+     <div key={(t as any).id ?? `${t.first_name}${t.last_name}`} className={effective > 0 ? 'text-gray-700' : 'text-red-700 font-semibold'}>
+      • {t.first_name} {t.last_name} : <b>{effective} €/h</b> <span className="text-gray-500">({source})</span>
+     </div>
+    )
+   })}
+  </div>
+ )}
  </div>
  <div className="field md:col-span-2">
  <label>Salle par défaut</label>

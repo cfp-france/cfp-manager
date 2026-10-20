@@ -17,7 +17,8 @@ export async function createMissionWithRecurrence(formData: FormData) {
  end_date: p.end_date,
  default_room: p.default_room || null,
  cfa_hourly_rate: Number(p.cfa_hourly_rate),
- trainer_hourly_rate: Number(p.trainer_hourly_rate),
+ // Si vide ou 0 → on laisse null pour que les calculs fallback sur le tarif par défaut du formateur
+ trainer_hourly_rate: p.trainer_hourly_rate && Number(p.trainer_hourly_rate) > 0 ? Number(p.trainer_hourly_rate) : null,
  }).select('id').single()
  if (err1 || !mission) { console.error(err1); return }
 
@@ -86,7 +87,8 @@ export async function updateMission(formData: FormData) {
  end_date: p.end_date,
  default_room: p.default_room || null,
  cfa_hourly_rate: Number(p.cfa_hourly_rate),
- trainer_hourly_rate: Number(p.trainer_hourly_rate),
+ // Si vide ou 0 → on laisse null (fallback sur tarif par défaut formateur côté calculs)
+ trainer_hourly_rate: p.trainer_hourly_rate && Number(p.trainer_hourly_rate) > 0 ? Number(p.trainer_hourly_rate) : null,
  description: p.description || null,
  }).eq('id', id)
  if (error) { console.error('[updateMission]', error); return }

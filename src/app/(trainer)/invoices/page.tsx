@@ -32,7 +32,7 @@ export default async function TrainerInvoicesPage({ searchParams }: { searchPara
  const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1
  const key = `${y}-${m}`
  const h = Number((e as any).hours_actual ?? 0)
- const rate = Number((e as any).session?.mission?.trainer_hourly_rate ?? (trainer as any).hourly_rate_default ?? 0)
+ const rate = Number((e as any).session?.mission?.trainer_hourly_rate) || Number((trainer as any).hourly_rate_default) || 0
  if (!groups[key]) groups[key] = { hours: 0, amount: 0, year: y, month: m }
  groups[key].hours += h
  groups[key].amount += h * rate

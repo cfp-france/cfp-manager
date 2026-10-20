@@ -50,7 +50,12 @@ export default async function MissionsPage() {
  <td>{m.formation_id ? (formationById[m.formation_id]?.code ?? '—') : '—'}</td>
  <td className="text-xs">{fmtDate(m.start_date)} → {fmtDate(m.end_date)}</td>
  <td>{sessionsCountByMission[m.id] ?? 0}</td>
- <td className="text-xs">{Number(m.cfa_hourly_rate ?? 0)}€ / {Number(m.trainer_hourly_rate ?? 0)}€</td>
+ <td className="text-xs">
+ {Number(m.cfa_hourly_rate ?? 0)}€ /{' '}
+ {Number(m.trainer_hourly_rate) > 0
+  ? `${Number(m.trainer_hourly_rate)}€`
+  : <span className="italic text-amber-700" title="Tarif par défaut du formateur appliqué">défaut form.</span>}
+ </td>
  <td>
  {m.archived_at
  ? <span className="status status-refused">Archivée</span>
