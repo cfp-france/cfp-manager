@@ -73,18 +73,60 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
   const nextWeek = iso(addDays(monday, 7))
   const cfaFilter = searchParams.cfa && searchParams.cfa !== '' ? searchParams.cfa : null
 
-  const [{ data: cfas }, { data: sessions }, { data: templateSlots }, { data: trainers }] = await Promise.all([
+  // Requêtes séparées (plus résilientes aux imbrications RLS)
+  const [
+    { data: cfas },
+    { data: sessionsRaw, error: sessErr },
+    { data: templateSlotsRaw },
+    { data: trainers },
+    { data: missionsRaw },
+    { data: formationsRaw },
+    { data: trainersAll },
+  ] = await Promise.all([
     s.from('cfa').select('id, name, city, default_hourly_rate').is('archived_at', null).order('name'),
     s.from('mission_sessions')
-      .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, needs_substitution, break_minutes, mission:missions(name, cfa_hourly_rate, cfa:cfa(id, name, default_hourly_rate), formation:formations(code, name)), trainer:trainers(id, first_name, last_name, hourly_rate_default), cfa:cfa(id, name, default_hourly_rate)')
+      .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, mission_id, needs_substitution, break_minutes')
       .gte('session_date', iso(monday))
       .lte('session_date', iso(sunday))
       .order('session_date').order('start_time'),
     s.from('weekly_schedule_slots')
-      .select('id, cfa_id, weekday, start_time, end_time, kind, room, label, trainer_id, trainer:trainers(id, first_name, last_name, hourly_rate_default), formation:formations(code, name), cfa:cfa(id, name, default_hourly_rate)')
+      .select('id, cfa_id, weekday, start_time, end_time, kind, room, label, trainer_id, formation_id')
       .in('kind', ['lesson', 'event']),
     s.from('trainers').select('id, first_name, last_name').eq('active', true).order('last_name'),
+    s.from('missions').select('id, name, cfa_id, formation_id, cfa_hourly_rate'),
+    s.from('formations').select('id, code, name'),
+    s.from('trainers').select('id, first_name, last_name, hourly_rate_default'),
   ])
+  if (sessErr) console.error('[/planning] sessErr', sessErr)
+
+  // Lookup maps
+  const cfaById = new Map((cfas ?? []).map((c: any) => [c.id, c]))
+  const missionById = new Map((missionsRaw ?? []).map((m: any) => [m.id, m]))
+  const formationById = new Map((formationsRaw ?? []).map((f: any) => [f.id, f]))
+  const trainerById = new Map((trainersAll ?? []).map((t: any) => [t.id, t]))
+
+  // Enrichit chaque session concrète avec les joins locaux
+  const sessions = (sessionsRaw ?? []).map((se: any) => {
+    const mission = se.mission_id ? missionById.get(se.mission_id) : null
+    const missionCfa = mission ? cfaById.get((mission as any).cfa_id) : null
+    const formation = mission ? formationById.get((mission as any).formation_id) : null
+    const trainer = se.trainer_id ? trainerById.get(se.trainer_id) : null
+    const cfa = cfaById.get(se.cfa_id) ?? missionCfa ?? null
+    return {
+      ...se,
+      mission: mission ? { ...(mission as any), cfa: missionCfa ?? null, formation: formation ?? null } : null,
+      trainer: trainer ?? null,
+      cfa: cfa ?? null,
+    }
+  })
+
+  // Enrichit chaque template avec les joins locaux
+  const templateSlots = (templateSlotsRaw ?? []).map((sl: any) => ({
+    ...sl,
+    cfa: cfaById.get(sl.cfa_id) ?? null,
+    formation: sl.formation_id ? formationById.get(sl.formation_id) : null,
+    trainer: sl.trainer_id ? trainerById.get(sl.trainer_id) : null,
+  }))
 
   const cfaFilterOk = (cfaId: string | null | undefined) => !cfaFilter || cfaId === cfaFilter
 
