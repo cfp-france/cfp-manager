@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
 import { buildTrainerColorMap, NO_TRAINER_COLOR } from '@/lib/trainer-colors'
+import { assignSubstitute, clearSessionTrainer } from '@/actions/substitutions'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -97,6 +98,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
     concreteByKey.add(key)
     items.push({
       kind: 'real',
+      session_id: (se as any).id,
       session_date: (se as any).session_date,
       start_time: (se as any).start_time?.slice(0,5),
       end_time: (se as any).end_time?.slice(0,5),
@@ -232,6 +234,9 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
         </div>
       ) : (
         <div className="space-y-6">
+          <div className="bg-blue-50 border-l-4 border-blue-500 p-2 rounded text-[11px] text-blue-900">
+            💡 <b>Cliquez sur une séance</b> pour programmer un remplacement de formateur ou déprogrammer le formateur actuel (créneau à pourvoir).
+          </div>
           {Object.entries(byCfa).map(([cfaId, group]) => (
             <div key={cfaId}>
               <h2 className="text-lg font-bold text-navy mb-2">{group.cfaName}</h2>
@@ -241,6 +246,9 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
                 dayStart={dayStart}
                 totalMin={totalMin}
                 colorByTrainer={colorByTrainer}
+                allTrainers={trainers ?? []}
+                weekParam={searchParams.w ?? ''}
+                cfaParam={cfaFilter ?? ''}
               />
             </div>
           ))}
@@ -251,14 +259,18 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
 }
 
 function WeekGrid({
-  monday, items, dayStart, totalMin, colorByTrainer,
+  monday, items, dayStart, totalMin, colorByTrainer, allTrainers, weekParam, cfaParam,
 }: {
   monday: Date; items: any[]; dayStart: number; totalMin: number
   colorByTrainer: Record<string, { bg: string; border: string; text: string }>
+  allTrainers: any[]
+  weekParam: string
+  cfaParam: string
 }) {
+  const returnTo = `/planning?w=${weekParam || iso(monday)}${cfaParam ? `&cfa=${cfaParam}` : ''}`
   return (
-    <div className="card p-0 overflow-hidden">
-      <div className="grid" style={{ gridTemplateColumns: '60px repeat(7, 1fr)' }}>
+    <div className="card p-0 overflow-visible">
+      <div className="grid overflow-visible" style={{ gridTemplateColumns: '60px repeat(7, 1fr)' }}>
         <div className="bg-gray-50 border-b border-gray-200 border-r" style={{ height: 48 }}></div>
         {DAYS.map(d => {
           const date = addDays(monday, d.num)
@@ -302,26 +314,84 @@ function WeekGrid({
                 const leftPct = column * widthPct
                 const trainerRate = Number(item.trainer?.hourly_rate_default) || 0
                 const isTemplate = item.kind === 'template'
+                const blockContent = (
+                  <div className="p-1 text-[10px] leading-tight font-semibold">
+                    <div className="flex items-center gap-1">
+                      {isTemplate && <span title="Créneau récurrent (non instancié)">▶</span>}
+                      <span>{item.start_time}-{item.end_time}</span>
+                    </div>
+                    <div className="truncate">{item.trainer ? `${item.trainer.first_name} ${item.trainer.last_name}` : 'À POURVOIR'}</div>
+                    <div className="truncate opacity-80">{item.formation?.code ?? ''}</div>
+                    {item.trainer && trainerRate > 0 && (
+                      <div className="truncate opacity-70">{trainerRate} €/h</div>
+                    )}
+                  </div>
+                )
+                // Templates (récurrents non instanciés) : pas d'action possible, affichage statique
+                if (isTemplate || !item.session_id) {
+                  return (
+                    <div key={idx} className="absolute rounded border overflow-hidden"
+                      style={{
+                        top, height,
+                        background: c.bg, borderColor: c.border, color: c.text,
+                        left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
+                        borderStyle: 'dashed',
+                      }}>
+                      {blockContent}
+                    </div>
+                  )
+                }
+                // Séances concrètes : popover d'action (remplacement + déprogrammer)
                 return (
-                  <div key={idx} className="absolute rounded border overflow-hidden"
+                  <details key={idx} className="group absolute rounded border open:z-30 open:shadow-xl cursor-pointer"
                     style={{
                       top, height,
                       background: c.bg, borderColor: c.border, color: c.text,
                       left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
-                      borderStyle: isTemplate ? 'dashed' : 'solid',
                     }}>
-                    <div className="p-1 text-[10px] leading-tight font-semibold">
-                      <div className="flex items-center gap-1">
-                        {isTemplate && <span title="Créneau récurrent (non instancié)">▶</span>}
-                        <span>{item.start_time}-{item.end_time}</span>
+                    <summary className="list-none overflow-hidden" style={{ maxHeight: height }}>
+                      {blockContent}
+                    </summary>
+                    <div className="absolute left-0 top-full mt-1 p-2 bg-white border rounded shadow-xl text-[10px] w-[240px] max-w-[90vw] z-50 max-h-[70vh] overflow-y-auto space-y-2 text-gray-900"
+                      style={{ borderColor: c.border }}>
+                      <div className="font-semibold text-navy text-xs">
+                        {item.start_time}-{item.end_time} · {fmtDate(item.session_date)}
                       </div>
-                      <div className="truncate">{item.trainer ? `${item.trainer.first_name} ${item.trainer.last_name}` : 'À POURVOIR'}</div>
-                      <div className="truncate opacity-80">{item.formation?.code ?? ''}</div>
-                      {item.trainer && trainerRate > 0 && (
-                        <div className="truncate opacity-70">{trainerRate} €/h</div>
+                      <div className="text-[10px] text-gray-600 pb-1 border-b">
+                        <div>{item.mission?.name ?? '—'}</div>
+                        <div className="text-gray-500">{item.cfa?.name ?? '—'} · {item.formation?.code ?? ''}</div>
+                        <div className="mt-1"><b>Formateur actuel :</b> {item.trainer ? `${item.trainer.first_name} ${item.trainer.last_name}` : <span className="text-red-700 font-semibold">À POURVOIR</span>}</div>
+                      </div>
+
+                      <form action={assignSubstitute} className="space-y-1">
+                        <input type="hidden" name="session_id" value={item.session_id} />
+                        <input type="hidden" name="return_to" value={returnTo} />
+                        <label className="font-semibold text-[10px]">
+                          {item.trainer ? 'Programmer un remplaçant' : 'Affecter un formateur'}
+                        </label>
+                        <select name="trainer_id" required className="w-full border rounded px-1 py-0.5">
+                          <option value="">— Choisir le formateur —</option>
+                          {allTrainers.filter((t: any) => t.id !== item.trainer_id).map((t: any) => (
+                            <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
+                          ))}
+                        </select>
+                        <button className="btn btn-sm btn-primary w-full">
+                          {item.trainer ? 'Programmer le remplacement' : 'Affecter'}
+                        </button>
+                      </form>
+
+                      {item.trainer && (
+                        <form action={clearSessionTrainer} className="pt-1 border-t border-gray-200">
+                          <input type="hidden" name="session_id" value={item.session_id} />
+                          <input type="hidden" name="return_to" value={returnTo} />
+                          <button className="btn btn-sm btn-danger w-full">
+                            Déprogrammer le formateur
+                          </button>
+                          <div className="text-[9px] text-gray-500 mt-1">Le créneau devient « À POURVOIR » et apparaît dans la file des remplacements.</div>
+                        </form>
                       )}
                     </div>
-                  </div>
+                  </details>
                 )
               })}
             </div>
