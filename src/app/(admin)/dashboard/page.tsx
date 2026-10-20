@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
 import Link from 'next/link'
 import { unvalidateEntry } from '@/actions/entries'
+import { WeekGrid, mondayOfWeek, isoDate, addDays } from '@/components/WeekGrid'
+import { buildTrainerColorMap, NO_TRAINER_COLOR } from '@/lib/trainer-colors'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +15,7 @@ function parseDate(v?: string): string | null {
  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null
 }
 
-export default async function Dashboard({ searchParams }: { searchParams: { from?: string; to?: string; cfa?: string; trainer?: string; preset?: string } }) {
+export default async function Dashboard({ searchParams }: { searchParams: { from?: string; to?: string; cfa?: string; trainer?: string; preset?: string; view?: string; vw?: string } }) {
  const s = createClient()
  const today = new Date()
  const yyyy = today.getFullYear()
@@ -46,9 +48,9 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
 
  // Entrées validées sur la période (on charge aussi le tarif par défaut du CFA pour fallback)
  let query = s.from('time_entries')
- .select(`id, hours_actual, status, work_date, validated_at, session_id, trainer_id,
+ .select(`id, hours_actual, status, work_date, validated_at, session_id, trainer_id, actual_start, actual_end,
  trainer:trainers(first_name, last_name, hourly_rate_default),
- session:mission_sessions(mission_id, cfa_id,
+ session:mission_sessions(mission_id, cfa_id, start_time, end_time,
  mission:missions(name, cfa_hourly_rate, trainer_hourly_rate, cfa:cfa(id, name, default_hourly_rate)),
  cfa:cfa(id, name, default_hourly_rate))`)
  .eq('status', 'validated')
@@ -96,21 +98,57 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  const weekFromStr = weekStart.toISOString().slice(0,10)
  const weekToStr = weekEnd.toISOString().slice(0,10)
 
- const { data: weekSessions } = await s.from('mission_sessions')
- .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, needs_substitution, mission:missions(name, cfa:cfa(id, name), formation:formations(code, name)), trainer:trainers(first_name, last_name), cfa:cfa(id, name)')
- .gte('session_date', weekFromStr)
- .lte('session_date', weekToStr)
- .order('session_date')
- .order('start_time')
+ const [{ data: weekSessions }, { data: weekTemplates }] = await Promise.all([
+  s.from('mission_sessions')
+   .select('id, session_date, start_time, end_time, room, trainer_id, cfa_id, needs_substitution, mission:missions(name, cfa:cfa(id, name), formation:formations(code, name)), trainer:trainers(first_name, last_name), cfa:cfa(id, name)')
+   .gte('session_date', weekFromStr)
+   .lte('session_date', weekToStr)
+   .order('session_date').order('start_time'),
+  s.from('weekly_schedule_slots')
+   .select('id, cfa_id, weekday, start_time, end_time, kind, room, trainer_id, trainer:trainers(first_name, last_name), formation:formations(code, name), cfa:cfa(id, name)')
+   .in('kind', ['lesson', 'event']),
+ ])
 
- // Grouper par CFA
- const sessionsByCfa: Record<string, { cfaName: string; sessions: any[] }> = {}
+ // Projeter les créneaux récurrents sur chaque jour de la semaine, en évitant les doublons avec les séances concrètes
+ const concreteKeys = new Set<string>()
  for (const se of weekSessions ?? []) {
- const cfaId = (se as any).mission?.cfa?.id ?? (se as any).cfa?.id ?? 'unknown'
- const cfaName = (se as any).mission?.cfa?.name ?? (se as any).cfa?.name ?? 'Sans CFA'
- if (!sessionsByCfa[cfaId]) sessionsByCfa[cfaId] = { cfaName, sessions: [] }
- sessionsByCfa[cfaId].sessions.push(se)
+  const cfaId = (se as any).mission?.cfa?.id ?? (se as any).cfa?.id ?? 'unknown'
+  concreteKeys.add(`${(se as any).session_date}|${(se as any).start_time?.slice(0,5)}|${cfaId}`)
  }
+ const projectedTemplates: any[] = []
+ for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+  const date = isoDate(addDays(weekStart, dayIdx))
+  const pgWeekday = dayIdx + 1
+  for (const sl of weekTemplates ?? []) {
+   if ((sl as any).weekday !== pgWeekday) continue
+   const cfaId = (sl as any).cfa?.id ?? (sl as any).cfa_id
+   const key = `${date}|${(sl as any).start_time?.slice(0,5)}|${cfaId}`
+   if (concreteKeys.has(key)) continue
+   projectedTemplates.push({
+    ...sl,
+    _isTemplate: true,
+    session_date: date,
+    cfa_id: cfaId,
+    mission: null,
+   })
+  }
+ }
+
+ // Grouper par CFA — fusion séances concrètes + templates projetés
+ const sessionsByCfa: Record<string, { cfaName: string; sessions: any[] }> = {}
+ for (const se of (weekSessions ?? []) as any[]) {
+  const cfaId = se.mission?.cfa?.id ?? se.cfa?.id ?? 'unknown'
+  const cfaName = se.mission?.cfa?.name ?? se.cfa?.name ?? 'Sans CFA'
+  if (!sessionsByCfa[cfaId]) sessionsByCfa[cfaId] = { cfaName, sessions: [] }
+  sessionsByCfa[cfaId].sessions.push(se)
+ }
+ for (const se of projectedTemplates) {
+  const cfaId = se.cfa?.id ?? se.cfa_id ?? 'unknown'
+  const cfaName = se.cfa?.name ?? 'Sans CFA'
+  if (!sessionsByCfa[cfaId]) sessionsByCfa[cfaId] = { cfaName, sessions: [] }
+  sessionsByCfa[cfaId].sessions.push(se)
+ }
+ for (const g of Object.values(sessionsByCfa)) g.sessions.sort((a, b) => (a.session_date + a.start_time).localeCompare(b.session_date + b.start_time))
  const weekDaysLabels = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
 
  const periodLabel = preset === 'month'
@@ -198,17 +236,18 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  <tr><th>Jour</th><th>Date</th><th>Horaires</th><th>Formation</th><th>Mission</th><th>Formateur</th><th>Salle</th></tr>
  </thead>
  <tbody>
- {group.sessions.map((se: any) => {
+ {group.sessions.map((se: any, i: number) => {
  const d = new Date(se.session_date)
  const dayIdx = (d.getDay() + 6) % 7
  const noTrainer = !se.trainer_id
+ const isTemplate = se._isTemplate
  return (
- <tr key={se.id} className={noTrainer ? 'bg-red-50' : ''}>
+ <tr key={se.id ?? `tpl-${i}`} className={noTrainer ? 'bg-red-50' : (isTemplate ? 'bg-blue-50/40' : '')}>
  <td className="font-semibold">{weekDaysLabels[dayIdx]}</td>
  <td>{fmtDate(se.session_date)}</td>
  <td>{se.start_time?.slice(0,5)}-{se.end_time?.slice(0,5)}</td>
- <td>{se.mission?.formation?.code ?? '—'}</td>
- <td className="truncate max-w-[180px]">{se.mission?.name ?? '—'}</td>
+ <td>{se.mission?.formation?.code ?? se.formation?.code ?? '—'}</td>
+ <td className="truncate max-w-[180px]">{se.mission?.name ?? (isTemplate ? <span className="italic text-blue-700">Récurrent</span> : '—')}</td>
  <td className={noTrainer ? 'text-red-700 font-semibold' : ''}>
  {se.trainer ? `${se.trainer.first_name} ${se.trainer.last_name}` : 'À pourvoir'}
  </td>
@@ -225,11 +264,87 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  </div>
 
  {/* Détail des saisies validées sur la période (avec bouton Dévalider) */}
+ {(() => {
+   const vw = searchParams.vw === 'grid' ? 'grid' : 'table'
+   const baseParams: Record<string, string> = {}
+   if (searchParams.from) baseParams.from = searchParams.from
+   if (searchParams.to) baseParams.to = searchParams.to
+   if (searchParams.cfa) baseParams.cfa = searchParams.cfa
+   if (searchParams.trainer) baseParams.trainer = searchParams.trainer
+   if (searchParams.preset) baseParams.preset = searchParams.preset
+   const qs = (extra: Record<string, string>) => new URLSearchParams({ ...baseParams, ...extra }).toString()
+
+   // Pour la grille : on affiche UNE semaine à la fois (navigable), car la grille 7 jours n'affiche pas plus
+   const gridWeekParam = searchParams.view && /^\d{4}-\d{2}-\d{2}$/.test(searchParams.view) ? new Date(searchParams.view) : new Date()
+   const gridMonday = mondayOfWeek(gridWeekParam)
+   const gridSunday = addDays(gridMonday, 6)
+   const gridEntries = entries.filter((e: any) => {
+     const d = e.work_date
+     return d >= isoDate(gridMonday) && d <= isoDate(gridSunday)
+   })
+   const trainerIdsInGrid = Array.from(new Set(gridEntries.map((e: any) => e.trainer_id).filter(Boolean)))
+   const colorByTrainerDash = buildTrainerColorMap(trainerIdsInGrid)
+   const gridItems = gridEntries.map((e: any) => ({
+     session_date: e.work_date,
+     start_time: (e.session?.start_time ?? e.actual_start ?? '08:00').slice(0, 5),
+     end_time: (e.session?.end_time ?? e.actual_end ?? '09:00').slice(0, 5),
+     colorKey: e.trainer_id as string | null,
+     line2: `${e.trainer?.first_name ?? ''} ${e.trainer?.last_name ?? ''}`.trim() || 'Formateur',
+     line3: e.session?.mission?.name ?? e.session?.mission?.cfa?.name ?? e.session?.cfa?.name ?? 'Hors mission',
+     line4: `${fmtHours(Number(e.hours_actual ?? 0))}`,
+   }))
+   const prevGridLink = `/dashboard?${qs({ vw: 'grid', view: isoDate(addDays(gridMonday, -7)) })}`
+   const nextGridLink = `/dashboard?${qs({ vw: 'grid', view: isoDate(addDays(gridMonday, 7)) })}`
+   const todayGridLink = `/dashboard?${qs({ vw: 'grid' })}`
+
+   return (
  <div className="card mb-5">
- <div className="card-header">
- <div className="card-title">Saisies validées sur la période</div>
+ <div className="card-header flex-wrap gap-2">
+ <div className="card-title flex-1">Saisies validées sur la période</div>
+ <div className="flex gap-1 items-center">
+   <span className="text-[11px] text-gray-500 uppercase font-semibold mr-1">Affichage</span>
+   <Link href={`/dashboard?${qs({ vw: 'table' })}`} className={`btn btn-sm ${vw === 'table' ? 'btn-primary' : 'btn-outline'}`}>Tableau</Link>
+   <Link href={`/dashboard?${qs({ vw: 'grid' })}`} className={`btn btn-sm ${vw === 'grid' ? 'btn-primary' : 'btn-outline'}`}>Grille horaire</Link>
+ </div>
  </div>
  <div className="card-body p-0">
+ {vw === 'grid' ? (
+  <div className="p-3">
+   <div className="flex items-center gap-2 mb-3 text-sm">
+    <Link href={prevGridLink} className="btn btn-sm btn-outline">← Semaine préc.</Link>
+    <Link href={todayGridLink} className="btn btn-sm btn-outline">Cette semaine</Link>
+    <Link href={nextGridLink} className="btn btn-sm btn-outline">Semaine suiv. →</Link>
+    <span className="ml-auto text-xs text-gray-600">
+     Semaine du <b>{fmtDate(isoDate(gridMonday))}</b> au <b>{fmtDate(isoDate(gridSunday))}</b> — {gridEntries.length} saisie(s)
+    </span>
+   </div>
+   {trainerIdsInGrid.length > 0 && (
+    <div className="flex flex-wrap gap-1 mb-3 text-[10px]">
+     {trainerIdsInGrid.map(tid => {
+      const e = gridEntries.find((x: any) => x.trainer_id === tid)
+      const c = colorByTrainerDash[tid as string] ?? NO_TRAINER_COLOR
+      return (
+       <span key={tid as string} className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-medium"
+        style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text }}>
+        <span className="w-2 h-2 rounded-full" style={{ background: c.border }} />
+        {e?.trainer?.first_name} {e?.trainer?.last_name}
+       </span>
+      )
+     })}
+    </div>
+   )}
+   {gridEntries.length === 0 ? (
+    <div className="text-center text-gray-500 py-6 text-sm">Aucune saisie validée cette semaine. Naviguez entre les semaines.</div>
+   ) : (
+    <WeekGrid
+     monday={gridMonday}
+     items={gridItems}
+     colorByKey={colorByTrainerDash as any}
+     unassignedColor={NO_TRAINER_COLOR}
+    />
+   )}
+  </div>
+ ) : (
  <table className="w-full">
  <thead><tr><th>Date</th><th>Formateur</th><th>Mission / CFA</th><th>Heures</th><th></th></tr></thead>
  <tbody>
@@ -273,8 +388,11 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  )}
  </tbody>
  </table>
+ )}
  </div>
  </div>
+   )
+ })()}
 
  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
  <QuickLink href="/missions/new" title="+ Créer une mission" desc="Assistant avec planning récurrent" />
