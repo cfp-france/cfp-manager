@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
 import { buildTrainerColorMap, NO_TRAINER_COLOR } from '@/lib/trainer-colors'
-import { assignSubstitute, clearSessionTrainer } from '@/actions/substitutions'
+import { assignSubstitute, clearSessionTrainer, assignTrainerForTemplateOccurrence } from '@/actions/substitutions'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -241,7 +241,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
       ) : (
         <div className="space-y-6">
           <div className="bg-blue-50 border-l-4 border-blue-500 p-2 rounded text-[11px] text-blue-900">
-            💡 <b>Cliquez sur une séance</b> pour programmer un remplacement de formateur ou déprogrammer le formateur actuel (créneau à pourvoir).
+            💡 <b>Cliquez sur n'importe quelle séance</b> (concrète ou récurrente en pointillé) pour programmer un remplacement de formateur ou déprogrammer le formateur actuel. Les créneaux récurrents seront instanciés automatiquement pour ce jour-là.
           </div>
           {Object.entries(byCfa).map(([cfaId, group]) => (
             <div key={cfaId}>
@@ -333,27 +333,16 @@ function WeekGrid({
                     )}
                   </div>
                 )
-                // Templates (récurrents non instanciés) : pas d'action possible, affichage statique
-                if (isTemplate || !item.session_id) {
-                  return (
-                    <div key={idx} className="absolute rounded border overflow-hidden"
-                      style={{
-                        top, height,
-                        background: c.bg, borderColor: c.border, color: c.text,
-                        left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
-                        borderStyle: 'dashed',
-                      }}>
-                      {blockContent}
-                    </div>
-                  )
-                }
-                // Séances concrètes : popover d'action (remplacement + déprogrammer)
+                // Popover d'action — fonctionne pour TOUTES les séances :
+                // - Séances concrètes (session_id) → assignSubstitute / clearSessionTrainer
+                // - Templates récurrents → assignTrainerForTemplateOccurrence (instanciation à la volée)
                 return (
                   <details key={idx} className="group absolute rounded border open:z-30 open:shadow-xl cursor-pointer"
                     style={{
                       top, height,
                       background: c.bg, borderColor: c.border, color: c.text,
                       left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
+                      borderStyle: isTemplate ? 'dashed' : 'solid',
                     }}>
                     <summary className="list-none overflow-hidden" style={{ maxHeight: height }}>
                       {blockContent}
@@ -364,37 +353,81 @@ function WeekGrid({
                         {item.start_time}-{item.end_time} · {fmtDate(item.session_date)}
                       </div>
                       <div className="text-[10px] text-gray-600 pb-1 border-b">
-                        <div>{item.mission?.name ?? '—'}</div>
+                        <div>{item.mission?.name ?? (isTemplate ? '(Créneau récurrent)' : '—')}</div>
                         <div className="text-gray-500">{item.cfa?.name ?? '—'} · {item.formation?.code ?? ''}</div>
                         <div className="mt-1"><b>Formateur actuel :</b> {item.trainer ? `${item.trainer.first_name} ${item.trainer.last_name}` : <span className="text-red-700 font-semibold">À POURVOIR</span>}</div>
+                        {isTemplate && (
+                          <div className="mt-1 text-[9px] text-blue-700 italic">⚡ Ce créneau sera instancié à la volée au clic.</div>
+                        )}
                       </div>
 
-                      <form action={assignSubstitute} className="space-y-1">
-                        <input type="hidden" name="session_id" value={item.session_id} />
-                        <input type="hidden" name="return_to" value={returnTo} />
-                        <label className="font-semibold text-[10px]">
-                          {item.trainer ? 'Programmer un remplaçant' : 'Affecter un formateur'}
-                        </label>
-                        <select name="trainer_id" required className="w-full border rounded px-1 py-0.5">
-                          <option value="">— Choisir le formateur —</option>
-                          {allTrainers.filter((t: any) => t.id !== item.trainer_id).map((t: any) => (
-                            <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
-                          ))}
-                        </select>
-                        <button className="btn btn-sm btn-primary w-full">
-                          {item.trainer ? 'Programmer le remplacement' : 'Affecter'}
-                        </button>
-                      </form>
-
-                      {item.trainer && (
-                        <form action={clearSessionTrainer} className="pt-1 border-t border-gray-200">
-                          <input type="hidden" name="session_id" value={item.session_id} />
-                          <input type="hidden" name="return_to" value={returnTo} />
-                          <button className="btn btn-sm btn-danger w-full">
-                            Déprogrammer le formateur
-                          </button>
-                          <div className="text-[9px] text-gray-500 mt-1">Le créneau devient « À POURVOIR » et apparaît dans la file des remplacements.</div>
-                        </form>
+                      {item.session_id ? (
+                        <>
+                          <form action={assignSubstitute} className="space-y-1">
+                            <input type="hidden" name="session_id" value={item.session_id} />
+                            <input type="hidden" name="return_to" value={returnTo} />
+                            <label className="font-semibold text-[10px]">
+                              {item.trainer ? 'Programmer un remplaçant' : 'Affecter un formateur'}
+                            </label>
+                            <select name="trainer_id" required className="w-full border rounded px-1 py-0.5">
+                              <option value="">— Choisir le formateur —</option>
+                              {allTrainers.filter((t: any) => t.id !== item.trainer_id).map((t: any) => (
+                                <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
+                              ))}
+                            </select>
+                            <button className="btn btn-sm btn-primary w-full">
+                              {item.trainer ? 'Programmer le remplacement' : 'Affecter'}
+                            </button>
+                          </form>
+                          {item.trainer && (
+                            <form action={clearSessionTrainer} className="pt-1 border-t border-gray-200">
+                              <input type="hidden" name="session_id" value={item.session_id} />
+                              <input type="hidden" name="return_to" value={returnTo} />
+                              <button className="btn btn-sm btn-danger w-full">
+                                Déprogrammer le formateur
+                              </button>
+                              <div className="text-[9px] text-gray-500 mt-1">Le créneau devient « À POURVOIR » et apparaît dans la file des remplacements.</div>
+                            </form>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <form action={assignTrainerForTemplateOccurrence} className="space-y-1">
+                            <input type="hidden" name="cfa_id" value={item.cfa?.id ?? ''} />
+                            <input type="hidden" name="session_date" value={item.session_date} />
+                            <input type="hidden" name="start_time" value={item.start_time} />
+                            <input type="hidden" name="end_time" value={item.end_time} />
+                            <input type="hidden" name="room" value={item.room ?? ''} />
+                            <input type="hidden" name="return_to" value={returnTo} />
+                            <label className="font-semibold text-[10px]">
+                              {item.trainer ? 'Programmer un remplaçant pour cette séance' : 'Affecter un formateur'}
+                            </label>
+                            <select name="trainer_id" required className="w-full border rounded px-1 py-0.5">
+                              <option value="">— Choisir le formateur —</option>
+                              {allTrainers.filter((t: any) => t.id !== item.trainer_id).map((t: any) => (
+                                <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
+                              ))}
+                            </select>
+                            <button className="btn btn-sm btn-primary w-full">
+                              {item.trainer ? 'Programmer' : 'Affecter'}
+                            </button>
+                          </form>
+                          {item.trainer && (
+                            <form action={assignTrainerForTemplateOccurrence} className="pt-1 border-t border-gray-200">
+                              <input type="hidden" name="cfa_id" value={item.cfa?.id ?? ''} />
+                              <input type="hidden" name="session_date" value={item.session_date} />
+                              <input type="hidden" name="start_time" value={item.start_time} />
+                              <input type="hidden" name="end_time" value={item.end_time} />
+                              <input type="hidden" name="room" value={item.room ?? ''} />
+                              <input type="hidden" name="trainer_id" value="" />
+                              <input type="hidden" name="return_to" value={returnTo} />
+                              <button className="btn btn-sm btn-danger w-full">
+                                Déprogrammer le formateur
+                              </button>
+                              <div className="text-[9px] text-gray-500 mt-1">Instancie la séance avec « À POURVOIR » pour ce jour précis. Les autres occurrences du créneau récurrent ne sont pas affectées.</div>
+                            </form>
+                          )}
+                        </>
                       )}
                     </div>
                   </details>
