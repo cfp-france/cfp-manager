@@ -35,8 +35,12 @@ export default async function EditMissionPage({ params }: { params: { id: string
  const returnTo = `/missions/${params.id}`
 
  const nbSessions = mission.mission_sessions?.length ?? 0
- const nbValidated = (mission.mission_sessions ?? []).reduce((acc: number, se: any) =>
- acc + (se.time_entries?.some((te: any) => te.status === 'validated') ? 1 : 0), 0)
+ // Supabase renvoie parfois time_entries comme objet unique (1:1) et parfois comme tableau (1:N)
+ // selon la contrainte unique sur session_id → on normalise avant de tester
+ const nbValidated = (mission.mission_sessions ?? []).reduce((acc: number, se: any) => {
+   const tes = Array.isArray(se.time_entries) ? se.time_entries : (se.time_entries ? [se.time_entries] : [])
+   return acc + (tes.some((te: any) => te?.status === 'validated') ? 1 : 0)
+ }, 0)
 
  return (
  <div>
