@@ -351,10 +351,10 @@ function SlotCell({ slot, top, height, bg, border, text, leftPct, widthPct, trai
   trainers: any[]; formations: any[]; cfaId: string
 }) {
   return (
-    <details className="absolute rounded border overflow-hidden"
+    <details className="group absolute rounded border open:z-20 open:shadow-xl"
       style={{ top, height, background: bg, borderColor: border,
                left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)` }}>
-      <summary className="cursor-pointer p-1 text-[10px] leading-tight font-semibold select-none" style={{ color: text }}>
+      <summary className="cursor-pointer p-1 text-[10px] leading-tight font-semibold select-none overflow-hidden" style={{ color: text, maxHeight: height }}>
         <div>{slot.start_time.slice(0,5)}-{slot.end_time.slice(0,5)}</div>
         {slot.kind === 'lesson' && <>
           <div className="truncate">{slot.trainer ? `${slot.trainer.first_name} ${slot.trainer.last_name}` : 'À POURVOIR'}</div>
@@ -367,8 +367,9 @@ function SlotCell({ slot, top, height, bg, border, text, leftPct, widthPct, trai
         {slot.kind === 'break' && <div>Pause</div>}
         {slot.kind === 'event' && <div className="truncate">{slot.label ?? 'Événement'}</div>}
       </summary>
-      <div className="p-2 bg-white border-t text-[10px] space-y-1">
-        <form action="/weekly-schedule" className="hidden" />
+      {/* Panneau d'édition : affiché hors du flux pour ne pas être tronqué par la hauteur du créneau */}
+      <div className="absolute left-0 right-0 top-full mt-1 p-2 bg-white border rounded shadow-xl text-[10px] space-y-1 w-[200px] max-w-[90vw] z-30"
+        style={{ borderColor: border }}>
         <EditForm slot={slot} trainers={trainers} formations={formations} cfaId={cfaId} />
       </div>
     </details>
@@ -404,10 +405,10 @@ function EditForm({ slot, trainers, formations, cfaId }: { slot: any; trainers: 
         <input name="label" defaultValue={slot.label ?? ''} placeholder="Intitulé" className="border rounded px-1 py-0.5 w-full" />
         <button className="btn btn-sm btn-primary w-full">Enregistrer</button>
       </form>
-      <form action={deleteSlot}>
+      <form action={deleteSlot} className="pt-1 border-t border-gray-200 mt-1">
         <input type="hidden" name="id" value={slot.id} />
         <input type="hidden" name="cfa_id" value={cfaId} />
-        <button className="btn btn-sm btn-danger w-full">Supprimer</button>
+        <button className="btn btn-sm btn-danger w-full">🗑 Supprimer ce créneau</button>
       </form>
     </>
   )
