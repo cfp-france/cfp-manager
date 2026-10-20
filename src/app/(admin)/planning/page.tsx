@@ -92,10 +92,15 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
   const items: any[] = []
 
   for (const se of sessions ?? []) {
-    const cfaId = (se as any).mission?.cfa?.id ?? (se as any).cfa?.id ?? null
+    const cfaId = (se as any).mission?.cfa?.id ?? (se as any).cfa?.id ?? (se as any).cfa_id ?? null
     if (!cfaFilterOk(cfaId)) continue
+    // On enregistre PLUSIEURS clés de dédup pour couvrir le cas où la cfa_id de la
+    // mission_session diffère de celle du template (ex: mission générique partagée)
     const key = `${(se as any).session_date}|${(se as any).start_time?.slice(0,5)}|${cfaId}`
     concreteByKey.add(key)
+    // Clé additionnelle sans cfa (date + horaire) pour matcher même si l'instanciation
+    // a utilisé un autre cfa_id → évite d'afficher le template en doublon
+    concreteByKey.add(`${(se as any).session_date}|${(se as any).start_time?.slice(0,5)}|*`)
     items.push({
       kind: 'real',
       session_id: (se as any).id,
@@ -121,7 +126,8 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
       const cfaId = (sl as any).cfa_id
       if (!cfaFilterOk(cfaId)) continue
       const key = `${date}|${(sl as any).start_time?.slice(0,5)}|${cfaId}`
-      if (concreteByKey.has(key)) continue
+      const wildcardKey = `${date}|${(sl as any).start_time?.slice(0,5)}|*`
+      if (concreteByKey.has(key) || concreteByKey.has(wildcardKey)) continue
       items.push({
         kind: 'template',
         session_date: date,
