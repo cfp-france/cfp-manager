@@ -19,7 +19,7 @@ const CFA_PALETTE = [
 ]
 const NEUTRAL = { bg: '#f3f4f6', border: '#9ca3af', text: '#374151' }
 
-export default async function TrainerSessionsPage({ searchParams }: { searchParams: { declared?: string; vw?: string; w?: string } }) {
+export default async function TrainerSessionsPage({ searchParams }: { searchParams: { declared?: string; vw?: string; w?: string; scope?: string } }) {
  const { trainer } = await requireTrainer()
  const s = createClient()
  const { data: sessions } = await s.from('mission_sessions')
@@ -28,20 +28,31 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  .order('session_date', { ascending: false })
 
  const vw = searchParams.vw === 'grid' ? 'grid' : 'table'
+ const scope = searchParams.scope === 'month' ? 'month' : 'week'
 
- // Mode grille : focus sur une semaine
+ // Mode grille : semaine ou mois
  const gridBase = searchParams.w && /^\d{4}-\d{2}-\d{2}$/.test(searchParams.w) ? new Date(searchParams.w) : new Date()
- const gridMonday = mondayOfWeek(gridBase)
- const gridSunday = addDays(gridMonday, 6)
+ let gridStart: Date, gridEnd: Date
+ if (scope === 'month') {
+  const mStart = new Date(gridBase.getFullYear(), gridBase.getMonth(), 1)
+  const mEnd = new Date(gridBase.getFullYear(), gridBase.getMonth() + 1, 0)
+  gridStart = mondayOfWeek(mStart)
+  gridEnd = addDays(mondayOfWeek(mEnd), 6)
+ } else {
+  gridStart = mondayOfWeek(gridBase)
+  gridEnd = addDays(gridStart, 6)
+ }
  const gridSessions = (sessions ?? []).filter((se: any) =>
-  se.session_date >= isoDate(gridMonday) && se.session_date <= isoDate(gridSunday))
+  se.session_date >= isoDate(gridStart) && se.session_date <= isoDate(gridEnd))
 
  const cfaIds = Array.from(new Set(gridSessions.map((se: any) => se.mission?.cfa?.id ?? se.cfa?.id).filter(Boolean)))
  const colorByCfa: Record<string, { bg: string; border: string; text: string }> = {}
  cfaIds.sort().forEach((id, i) => { colorByCfa[id as string] = CFA_PALETTE[i % CFA_PALETTE.length] })
 
  const gridItems = gridSessions.map((se: any) => {
-  const te = Array.isArray(se.time_entries) ? se.time_entries[0] : null
+  const teRaw = se.time_entries
+  const teArr = Array.isArray(teRaw) ? teRaw : (teRaw ? [teRaw] : [])
+  const te = teArr[0]
   const statusLabel = !te ? 'À saisir'
    : te.status === 'draft' ? 'Brouillon'
    : te.status === 'submitted' ? 'Soumise'
@@ -56,10 +67,29 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
    line2: cfa?.name ?? 'CFA',
    line3: se.mission?.name ?? (se.self_declared ? 'Hors planning' : '—'),
    line4: statusLabel,
+   href: `/sessions/${se.id}`,
+   title: `Cliquer pour saisir/modifier (${statusLabel})`,
   }
  })
- const prevW = isoDate(addDays(gridMonday, -7))
- const nextW = isoDate(addDays(gridMonday, 7))
+
+ const mondays: Date[] = []
+ for (let d = new Date(gridStart); d <= gridEnd; d = addDays(d, 7)) mondays.push(new Date(d))
+
+ const navStep = scope === 'month' ? 30 : 7
+ const prevW = isoDate(addDays(gridBase, -navStep))
+ const nextW = isoDate(addDays(gridBase, navStep))
+ const monthLabel = gridBase.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+ const totalHours = gridSessions.reduce((a: number, se: any) => {
+  const teRaw = se.time_entries
+  const teArr = Array.isArray(teRaw) ? teRaw : (teRaw ? [teRaw] : [])
+  return a + Number(teArr[0]?.hours_actual ?? 0)
+ }, 0)
+ const totalValidatedHours = gridSessions.reduce((a: number, se: any) => {
+  const teRaw = se.time_entries
+  const teArr = Array.isArray(teRaw) ? teRaw : (teRaw ? [teRaw] : [])
+  const te = teArr[0]
+  return a + (te?.status === 'validated' ? Number(te.hours_actual ?? 0) : 0)
+ }, 0)
 
  return (
  <div>
@@ -78,18 +108,23 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  <div className="flex items-center gap-2 mb-3">
   <span className="text-[11px] text-gray-500 uppercase font-semibold">Affichage</span>
   <Link href="/sessions?vw=table" className={`btn btn-sm ${vw === 'table' ? 'btn-primary' : 'btn-outline'}`}>Tableau</Link>
-  <Link href="/sessions?vw=grid" className={`btn btn-sm ${vw === 'grid' ? 'btn-primary' : 'btn-outline'}`}>Grille horaire</Link>
+  <Link href="/sessions?vw=grid&scope=week" className={`btn btn-sm ${vw === 'grid' && scope === 'week' ? 'btn-primary' : 'btn-outline'}`}>Grille (semaine)</Link>
+  <Link href="/sessions?vw=grid&scope=month" className={`btn btn-sm ${vw === 'grid' && scope === 'month' ? 'btn-primary' : 'btn-outline'}`}>Grille (mois)</Link>
  </div>
 
  {vw === 'grid' ? (
   <>
-   <div className="flex items-center gap-2 mb-3 text-sm">
-    <Link href={`/sessions?vw=grid&w=${prevW}`} className="btn btn-sm btn-outline">← Semaine préc.</Link>
-    <Link href="/sessions?vw=grid" className="btn btn-sm btn-outline">Cette semaine</Link>
-    <Link href={`/sessions?vw=grid&w=${nextW}`} className="btn btn-sm btn-outline">Semaine suiv. →</Link>
+   <div className="flex items-center gap-2 mb-3 text-sm flex-wrap">
+    <Link href={`/sessions?vw=grid&scope=${scope}&w=${prevW}`} className="btn btn-sm btn-outline">← {scope === 'month' ? 'Mois' : 'Semaine'} préc.</Link>
+    <Link href={`/sessions?vw=grid&scope=${scope}`} className="btn btn-sm btn-outline">Aujourd'hui</Link>
+    <Link href={`/sessions?vw=grid&scope=${scope}&w=${nextW}`} className="btn btn-sm btn-outline">{scope === 'month' ? 'Mois' : 'Semaine'} suiv. →</Link>
     <span className="ml-auto text-xs text-gray-600">
-     Du <b>{fmtDate(isoDate(gridMonday))}</b> au <b>{fmtDate(isoDate(gridSunday))}</b> — {gridSessions.length} séance(s)
+     {scope === 'month' ? <>Mois : <b className="capitalize">{monthLabel}</b></> : <>Du <b>{fmtDate(isoDate(gridStart))}</b> au <b>{fmtDate(isoDate(gridEnd))}</b></>}
+     {' '}— {gridSessions.length} séance(s) · <b>{fmtHours(totalValidatedHours)}</b> validées sur {fmtHours(totalHours)}
     </span>
+   </div>
+   <div className="bg-blue-50 border-l-4 border-blue-500 p-2 rounded mb-3 text-[11px] text-blue-900">
+    💡 <b>Cliquez sur un bloc</b> pour saisir ou modifier la séance. Utile pour contrôler vos heures sur le mois complet.
    </div>
    {cfaIds.length > 0 && (
     <div className="flex flex-wrap gap-1 mb-3 text-[10px]">
@@ -108,9 +143,25 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
     </div>
    )}
    {gridSessions.length === 0 ? (
-    <div className="card p-8 text-center text-gray-500">Aucune séance cette semaine. Naviguez avec ← →.</div>
+    <div className="card p-8 text-center text-gray-500">Aucune séance sur cette {scope === 'month' ? 'période' : 'semaine'}. Naviguez avec ← →.</div>
    ) : (
-    <WeekGrid monday={gridMonday} items={gridItems} colorByKey={colorByCfa} unassignedColor={NEUTRAL} />
+    <div className="space-y-4">
+     {mondays.map((m) => {
+      const sun = addDays(m, 6)
+      const weekItems = gridItems.filter(it => it.session_date >= isoDate(m) && it.session_date <= isoDate(sun))
+      if (scope === 'month' && weekItems.length === 0) return null
+      return (
+       <div key={isoDate(m)}>
+        {scope === 'month' && (
+         <div className="text-xs font-semibold text-navy mb-1">
+          Semaine du {fmtDate(isoDate(m))} au {fmtDate(isoDate(sun))} ({weekItems.length} séance(s))
+         </div>
+        )}
+        <WeekGrid monday={m} items={weekItems} colorByKey={colorByCfa} unassignedColor={NEUTRAL} />
+       </div>
+      )
+     })}
+    </div>
    )}
   </>
  ) : (

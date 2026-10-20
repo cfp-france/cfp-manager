@@ -15,7 +15,7 @@ function parseDate(v?: string): string | null {
  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null
 }
 
-export default async function Dashboard({ searchParams }: { searchParams: { from?: string; to?: string; cfa?: string; trainer?: string; preset?: string; view?: string; vw?: string } }) {
+export default async function Dashboard({ searchParams }: { searchParams: { from?: string; to?: string; cfa?: string; trainer?: string; preset?: string; view?: string; vw?: string; scope?: string } }) {
  const s = createClient()
  const today = new Date()
  const yyyy = today.getFullYear()
@@ -266,6 +266,7 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  {/* Détail des saisies validées sur la période (avec bouton Dévalider) */}
  {(() => {
    const vw = searchParams.vw === 'grid' ? 'grid' : 'table'
+   const scope = searchParams.scope === 'month' ? 'month' : 'week'
    const baseParams: Record<string, string> = {}
    if (searchParams.from) baseParams.from = searchParams.from
    if (searchParams.to) baseParams.to = searchParams.to
@@ -274,13 +275,23 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
    if (searchParams.preset) baseParams.preset = searchParams.preset
    const qs = (extra: Record<string, string>) => new URLSearchParams({ ...baseParams, ...extra }).toString()
 
-   // Pour la grille : on affiche UNE semaine à la fois (navigable), car la grille 7 jours n'affiche pas plus
-   const gridWeekParam = searchParams.view && /^\d{4}-\d{2}-\d{2}$/.test(searchParams.view) ? new Date(searchParams.view) : new Date()
-   const gridMonday = mondayOfWeek(gridWeekParam)
-   const gridSunday = addDays(gridMonday, 6)
+   // Base date pour la navigation grille (semaine ou mois)
+   const gridBaseDate = searchParams.view && /^\d{4}-\d{2}-\d{2}$/.test(searchParams.view) ? new Date(searchParams.view) : new Date()
+
+   // En mode mois : on couvre toutes les semaines qui touchent le mois sélectionné
+   let gridStart: Date, gridEnd: Date
+   if (scope === 'month') {
+     const monthStart = new Date(gridBaseDate.getFullYear(), gridBaseDate.getMonth(), 1)
+     const monthEnd = new Date(gridBaseDate.getFullYear(), gridBaseDate.getMonth() + 1, 0)
+     gridStart = mondayOfWeek(monthStart)
+     gridEnd = addDays(mondayOfWeek(monthEnd), 6)
+   } else {
+     gridStart = mondayOfWeek(gridBaseDate)
+     gridEnd = addDays(gridStart, 6)
+   }
    const gridEntries = entries.filter((e: any) => {
      const d = e.work_date
-     return d >= isoDate(gridMonday) && d <= isoDate(gridSunday)
+     return d >= isoDate(gridStart) && d <= isoDate(gridEnd)
    })
    const trainerIdsInGrid = Array.from(new Set(gridEntries.map((e: any) => e.trainer_id).filter(Boolean)))
    const colorByTrainerDash = buildTrainerColorMap(trainerIdsInGrid)
@@ -292,10 +303,23 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
      line2: `${e.trainer?.first_name ?? ''} ${e.trainer?.last_name ?? ''}`.trim() || 'Formateur',
      line3: e.session?.mission?.name ?? e.session?.mission?.cfa?.name ?? e.session?.cfa?.name ?? 'Hors mission',
      line4: `${fmtHours(Number(e.hours_actual ?? 0))}`,
+     href: `/entries/${e.id}`,
+     title: `Cliquer pour voir / modifier / dévalider — ${fmtHours(Number(e.hours_actual ?? 0))}`,
    }))
-   const prevGridLink = `/dashboard?${qs({ vw: 'grid', view: isoDate(addDays(gridMonday, -7)) })}`
-   const nextGridLink = `/dashboard?${qs({ vw: 'grid', view: isoDate(addDays(gridMonday, 7)) })}`
-   const todayGridLink = `/dashboard?${qs({ vw: 'grid' })}`
+
+   // Liste des lundis pour couvrir la plage (1 en mode semaine, 4-6 en mode mois)
+   const mondays: Date[] = []
+   for (let d = new Date(gridStart); d <= gridEnd; d = addDays(d, 7)) {
+     mondays.push(new Date(d))
+   }
+
+   const navStep = scope === 'month' ? 30 : 7
+   const prevGridLink = `/dashboard?${qs({ vw: 'grid', scope, view: isoDate(addDays(gridBaseDate, -navStep)) })}`
+   const nextGridLink = `/dashboard?${qs({ vw: 'grid', scope, view: isoDate(addDays(gridBaseDate, navStep)) })}`
+   const todayGridLink = `/dashboard?${qs({ vw: 'grid', scope })}`
+
+   const monthLabel = gridBaseDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+   const totalGridHours = gridEntries.reduce((a: number, e: any) => a + Number(e.hours_actual ?? 0), 0)
 
    return (
  <div className="card mb-5">
@@ -304,19 +328,24 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  <div className="flex gap-1 items-center">
    <span className="text-[11px] text-gray-500 uppercase font-semibold mr-1">Affichage</span>
    <Link href={`/dashboard?${qs({ vw: 'table' })}`} className={`btn btn-sm ${vw === 'table' ? 'btn-primary' : 'btn-outline'}`}>Tableau</Link>
-   <Link href={`/dashboard?${qs({ vw: 'grid' })}`} className={`btn btn-sm ${vw === 'grid' ? 'btn-primary' : 'btn-outline'}`}>Grille horaire</Link>
+   <Link href={`/dashboard?${qs({ vw: 'grid', scope: 'week' })}`} className={`btn btn-sm ${vw === 'grid' && scope === 'week' ? 'btn-primary' : 'btn-outline'}`}>Grille (semaine)</Link>
+   <Link href={`/dashboard?${qs({ vw: 'grid', scope: 'month' })}`} className={`btn btn-sm ${vw === 'grid' && scope === 'month' ? 'btn-primary' : 'btn-outline'}`}>Grille (mois)</Link>
  </div>
  </div>
  <div className="card-body p-0">
  {vw === 'grid' ? (
   <div className="p-3">
    <div className="flex items-center gap-2 mb-3 text-sm">
-    <Link href={prevGridLink} className="btn btn-sm btn-outline">← Semaine préc.</Link>
-    <Link href={todayGridLink} className="btn btn-sm btn-outline">Cette semaine</Link>
-    <Link href={nextGridLink} className="btn btn-sm btn-outline">Semaine suiv. →</Link>
+    <Link href={prevGridLink} className="btn btn-sm btn-outline">← {scope === 'month' ? 'Mois' : 'Semaine'} préc.</Link>
+    <Link href={todayGridLink} className="btn btn-sm btn-outline">Aujourd'hui</Link>
+    <Link href={nextGridLink} className="btn btn-sm btn-outline">{scope === 'month' ? 'Mois' : 'Semaine'} suiv. →</Link>
     <span className="ml-auto text-xs text-gray-600">
-     Semaine du <b>{fmtDate(isoDate(gridMonday))}</b> au <b>{fmtDate(isoDate(gridSunday))}</b> — {gridEntries.length} saisie(s)
+     {scope === 'month' ? <>Mois : <b className="capitalize">{monthLabel}</b></> : <>Semaine du <b>{fmtDate(isoDate(gridStart))}</b> au <b>{fmtDate(isoDate(gridEnd))}</b></>}
+     {' '}— {gridEntries.length} saisie(s) · <b>{fmtHours(totalGridHours)}</b>
     </span>
+   </div>
+   <div className="bg-blue-50 border-l-4 border-blue-500 p-2 rounded mb-3 text-[11px] text-blue-900">
+    💡 <b>Cliquez sur un bloc</b> pour ouvrir la fiche saisie (modifier les heures, voir la mission, dévalider).
    </div>
    {trainerIdsInGrid.length > 0 && (
     <div className="flex flex-wrap gap-1 mb-3 text-[10px]">
@@ -334,14 +363,30 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
     </div>
    )}
    {gridEntries.length === 0 ? (
-    <div className="text-center text-gray-500 py-6 text-sm">Aucune saisie validée cette semaine. Naviguez entre les semaines.</div>
+    <div className="text-center text-gray-500 py-6 text-sm">Aucune saisie validée sur cette {scope === 'month' ? 'période' : 'semaine'}.</div>
    ) : (
-    <WeekGrid
-     monday={gridMonday}
-     items={gridItems}
-     colorByKey={colorByTrainerDash as any}
-     unassignedColor={NO_TRAINER_COLOR}
-    />
+    <div className="space-y-4">
+     {mondays.map((m) => {
+      const sun = addDays(m, 6)
+      const weekItems = gridItems.filter(it => it.session_date >= isoDate(m) && it.session_date <= isoDate(sun))
+      if (scope === 'month' && weekItems.length === 0) return null
+      return (
+       <div key={isoDate(m)}>
+        {scope === 'month' && (
+         <div className="text-xs font-semibold text-navy mb-1">
+          Semaine du {fmtDate(isoDate(m))} au {fmtDate(isoDate(sun))} ({weekItems.length} saisie(s))
+         </div>
+        )}
+        <WeekGrid
+         monday={m}
+         items={weekItems}
+         colorByKey={colorByTrainerDash as any}
+         unassignedColor={NO_TRAINER_COLOR}
+        />
+       </div>
+      )
+     })}
+    </div>
    )}
   </div>
  ) : (

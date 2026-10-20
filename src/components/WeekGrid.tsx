@@ -1,7 +1,11 @@
+import Link from 'next/link'
+
 /**
  * Grille horaire 8h-20h × 7 jours, server-side.
  * Chaque item doit avoir : session_date (YYYY-MM-DD), start_time ("HH:MM"), end_time ("HH:MM"),
  *   et de quoi colorer / étiqueter (voir props).
+ *
+ * Un item peut porter `href` → le bloc devient cliquable (ouvre la fiche détail).
  *
  * Utilisée par :
  * - /planning (admin, par CFA, couleur par formateur)
@@ -75,6 +79,8 @@ export type WeekGridItem = {
   line3?: string      // ex. code formation
   line4?: string      // ex. salle ou tarif
   dashed?: boolean    // bordure pointillée (créneau récurrent non instancié)
+  href?: string       // si fourni → le bloc est cliquable (ouvre la fiche détail)
+  title?: string      // tooltip au survol
 }
 
 export function WeekGrid({
@@ -132,20 +138,32 @@ export function WeekGrid({
                 const c = (item.colorKey && colorByKey[item.colorKey]) || unassignedColor
                 const widthPct = 100 / maxCols
                 const leftPct = column * widthPct
+                const style = {
+                  top, height,
+                  background: c.bg, borderColor: c.border, color: c.text,
+                  left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
+                  borderStyle: item.dashed ? 'dashed' as const : 'solid' as const,
+                }
+                const inner = (
+                  <div className="p-1 text-[10px] leading-tight font-semibold">
+                    <div>{item.line1 ?? `${item.start_time}-${item.end_time}`}</div>
+                    {item.line2 && <div className="truncate">{item.line2}</div>}
+                    {item.line3 && <div className="truncate opacity-80">{item.line3}</div>}
+                    {item.line4 && <div className="truncate opacity-70">{item.line4}</div>}
+                  </div>
+                )
+                if (item.href) {
+                  return (
+                    <Link key={idx} href={item.href} title={item.title ?? 'Ouvrir le détail'}
+                      className="absolute rounded border overflow-hidden hover:ring-2 hover:ring-navy transition-all cursor-pointer"
+                      style={style}>
+                      {inner}
+                    </Link>
+                  )
+                }
                 return (
-                  <div key={idx} className="absolute rounded border overflow-hidden"
-                    style={{
-                      top, height,
-                      background: c.bg, borderColor: c.border, color: c.text,
-                      left: `calc(${leftPct}% + 2px)`, width: `calc(${widthPct}% - 4px)`,
-                      borderStyle: item.dashed ? 'dashed' : 'solid',
-                    }}>
-                    <div className="p-1 text-[10px] leading-tight font-semibold">
-                      <div>{item.line1 ?? `${item.start_time}-${item.end_time}`}</div>
-                      {item.line2 && <div className="truncate">{item.line2}</div>}
-                      {item.line3 && <div className="truncate opacity-80">{item.line3}</div>}
-                      {item.line4 && <div className="truncate opacity-70">{item.line4}</div>}
-                    </div>
+                  <div key={idx} title={item.title} className="absolute rounded border overflow-hidden" style={style}>
+                    {inner}
                   </div>
                 )
               })}
