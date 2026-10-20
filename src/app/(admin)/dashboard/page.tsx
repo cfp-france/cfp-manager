@@ -245,15 +245,16 @@ export default async function Dashboard({ searchParams }: { searchParams: { from
  <div>
  {missionName && missionId
  ? <Link href={`/missions/${missionId}`} className="text-brand font-semibold hover:underline" title="Ouvrir la fiche mission">{missionName}</Link>
- : <span className="italic text-gray-400">Hors mission</span>}
+ : <Link href={`/entries/${e.id}`} className="italic text-amber-700 hover:underline" title="Voir le détail de cette saisie hors mission">Hors mission →</Link>}
  </div>
  <div className="text-gray-500">{cfaName}</div>
  </td>
  <td>{fmtHours(Number(e.hours_actual ?? 0))}</td>
  <td>
- <div className="flex gap-1">
+ <div className="flex gap-1 flex-wrap">
+ <Link href={`/entries/${e.id}`} className="btn btn-sm btn-outline" title="Voir le détail de la saisie et la modifier">Voir saisie</Link>
  {missionId && (
- <Link href={`/missions/${missionId}`} className="btn btn-sm btn-outline" title="Voir la fiche mission et les saisies">Voir mission</Link>
+ <Link href={`/missions/${missionId}`} className="btn btn-sm btn-outline" title="Voir la fiche mission">Voir mission</Link>
  )}
  <form action={unvalidateEntry}>
  <input type="hidden" name="entry_id" value={e.id} />
