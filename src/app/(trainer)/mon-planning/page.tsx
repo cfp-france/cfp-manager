@@ -168,9 +168,9 @@ export default async function TrainerPlanningPage({ searchParams }: { searchPara
 
       {/* Navigation semaine */}
       <div className="card p-3 mb-4 flex flex-wrap items-center gap-2 bg-brand-light/30">
-        <Link href={`/planning?w=${prevWeek}`} className="btn btn-sm btn-outline">← Semaine précédente</Link>
-        <Link href="/planning" className="btn btn-sm btn-outline">Cette semaine</Link>
-        <Link href={`/planning?w=${nextWeek}`} className="btn btn-sm btn-outline">Semaine suivante →</Link>
+        <Link href={`/mon-planning?w=${prevWeek}`} className="btn btn-sm btn-outline">← Semaine précédente</Link>
+        <Link href="/mon-planning" className="btn btn-sm btn-outline">Cette semaine</Link>
+        <Link href={`/mon-planning?w=${nextWeek}`} className="btn btn-sm btn-outline">Semaine suivante →</Link>
         <div className="ml-auto text-xs text-gray-600">
           <b className="text-navy">{fmtHours(totalHours)}</b> planifiées cette semaine
         </div>

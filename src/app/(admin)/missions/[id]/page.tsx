@@ -11,24 +11,27 @@ export const dynamic = 'force-dynamic'
 export default async function EditMissionPage({ params }: { params: { id: string } }) {
  const s = createClient()
 
- const [{ data: mission }, { data: cfas }, { data: formations }, { data: entries }] = await Promise.all([
+ const [{ data: mission }, { data: cfas }, { data: formations }] = await Promise.all([
  s.from('missions')
  .select('*, cfa:cfa(name), mission_sessions(id, time_entries(id, status))')
  .eq('id', params.id).single(),
  s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
  s.from('formations').select('id, code, name').is('archived_at', null).order('name'),
- s.from('time_entries')
- .select(`id, status, work_date, hours_actual, actual_start, actual_end, break_minutes,
- adjustment_reason, content_covered, work_done, points_to_review, program_completion,
- trainer:trainers(first_name, last_name),
- session:mission_sessions!inner(id, mission_id, session_date, start_time, end_time, room)`)
- .eq('session.mission_id', params.id)
- .order('work_date', { ascending: false }),
  ])
  if (!mission) notFound()
 
- const validatedEntries = (entries ?? []).filter((e: any) => e.status === 'validated')
- const totalValidatedHours = validatedEntries.reduce((s, e: any) => s + Number(e.hours_actual ?? 0), 0)
+ // Saisies validées de la mission : on récupère via les séances de la mission
+ const sessionIds = (mission.mission_sessions ?? []).map((se: any) => se.id)
+ let validatedEntries: any[] = []
+ if (sessionIds.length > 0) {
+   const { data: ents } = await s.from('time_entries')
+     .select('id, status, work_date, hours_actual, actual_start, actual_end, break_minutes, adjustment_reason, content_covered, work_done, points_to_review, program_completion, trainer:trainers(first_name, last_name), session_id')
+     .in('session_id', sessionIds)
+     .eq('status', 'validated')
+     .order('work_date', { ascending: false })
+   validatedEntries = ents ?? []
+ }
+ const totalValidatedHours = validatedEntries.reduce((acc: number, e: any) => acc + Number(e.hours_actual ?? 0), 0)
  const returnTo = `/missions/${params.id}`
 
  const nbSessions = mission.mission_sessions?.length ?? 0
