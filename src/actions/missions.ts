@@ -20,7 +20,10 @@ export async function createMissionWithRecurrence(formData: FormData) {
  // Si vide ou 0 → on laisse null pour que les calculs fallback sur le tarif par défaut du formateur
  trainer_hourly_rate: p.trainer_hourly_rate && Number(p.trainer_hourly_rate) > 0 ? Number(p.trainer_hourly_rate) : null,
  }).select('id').single()
- if (err1 || !mission) { console.error(err1); return }
+ if (err1 || !mission) {
+  console.error('[createMissionWithRecurrence] insert mission', err1)
+  redirect('/missions/new?toast=' + encodeURIComponent('Erreur création mission : ' + (err1?.message ?? 'inconnue')) + '&toast_type=error')
+ }
 
  // 2. Créer la règle de récurrence
  const exceptions: string[] = p.exceptions ? String(p.exceptions).split(',').map((x: string) => x.trim()).filter(Boolean) : []
@@ -49,6 +52,8 @@ export async function createMissionWithRecurrence(formData: FormData) {
  if (excSet.has(iso)) continue
  sessions.push({
  mission_id: mission.id,
+ cfa_id: p.cfa_id,
+ formation_id: p.formation_id || null,
  session_date: iso,
  start_time: p.start_time,
  end_time: p.end_time,
@@ -57,10 +62,17 @@ export async function createMissionWithRecurrence(formData: FormData) {
  trainer_id: p.default_trainer_id || null,
  })
  }
- if (sessions.length > 0) await s.from('mission_sessions').insert(sessions)
+ if (sessions.length > 0) {
+  const { error: errSess } = await s.from('mission_sessions').insert(sessions)
+  if (errSess) {
+   console.error('[createMissionWithRecurrence] insert sessions', errSess)
+   redirect(`/missions/${mission.id}?toast=` + encodeURIComponent('Mission créée mais erreur à la génération des séances : ' + errSess.message) + '&toast_type=error')
+  }
+ }
 
  revalidatePath('/missions')
- redirect('/missions')
+ revalidatePath('/planning')
+ redirect(`/missions/${mission.id}?toast=` + encodeURIComponent(`Mission créée. ${sessions.length} séance(s) générée(s).`))
 }
 
 /**
