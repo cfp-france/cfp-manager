@@ -10,9 +10,8 @@ export default async function DeclareSessionPage() {
  const { trainer } = await requireTrainer()
  const s = createClient()
 
- const [{ data: cfas }, { data: missions }, { data: formationsRaw }] = await Promise.all([
+ const [{ data: cfas }, { data: formationsRaw }] = await Promise.all([
  s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
- s.from('missions').select('id, name, cfa_id, formation_id').is('archived_at', null).order('name'),
  s.from('formations').select('id, code, name, competence_blocks(id, number, title, skills(id, number, label))').is('archived_at', null).order('name'),
  ])
 
@@ -71,14 +70,6 @@ export default async function DeclareSessionPage() {
  </select>
  <p className="text-[11px] text-gray-500 mt-1">Si le CFA n'apparaît pas, demandez à l'administration de le créer.</p>
  </div>
- <div className="field md:col-span-2">
- <label>Mission associée (optionnel)</label>
- <select name="mission_id">
- <option value="">— Aucune (l'admin l'attachera si besoin) —</option>
- {missions?.map(m => <option key={m.id} value={m.id} data-cfa={m.cfa_id}>{m.name}</option>)}
- </select>
- <p className="text-[11px] text-gray-500 mt-1">Si votre séance faisait partie d'une mission existante, sélectionnez-la ici.</p>
- </div>
  </div>
  </div>
 
@@ -104,22 +95,23 @@ export default async function DeclareSessionPage() {
  <PedagogyPicker formations={formations} fixedFormationId={null} />
  <div className="field"><label>Contenu abordé <span className="text-red-600">*</span></label>
  <textarea name="content_covered" rows={2} required placeholder="Détail des chapitres, sujets, cas pratiques" /></div>
- <div className="field"><label>Supports pédagogiques utilisés</label>
- <textarea name="pedagogical_supports" rows={2} placeholder="Ex : Diaporama, étude de cas, jeux de rôle, DST" /></div>
+ <div className="field"><label>Supports pédagogiques utilisés (description)</label>
+ <textarea name="pedagogical_supports" rows={2} placeholder="Ex : Diaporama, étude de cas, jeux de rôle, DST" />
+ <p className="text-[11px] text-gray-500 mt-1"> Vous pourrez téléverser les fichiers de supports (PDF, diapos, exercices...) juste après avoir soumis la déclaration.</p>
+ </div>
  <div className="field"><label>Travail effectué / Avancement</label>
  <textarea name="work_done" rows={3} placeholder="Simulations, jeux de rôle, analyse, correction…" /></div>
  <div className="field"><label>Commentaire / Points à revoir</label>
  <textarea name="points_to_review" rows={2} placeholder="Difficultés rencontrées, points à approfondir" /></div>
- <div className="field"><label>% de complétion du programme</label>
- <input name="program_completion" type="number" min={0} max={100} defaultValue={100} /></div>
  <div className="field"><label>Commentaire libre (contexte)</label>
  <textarea name="trainer_comment" rows={2} placeholder="Ex : remplacement de dernière minute, intervention ponctuelle…" /></div>
  </div>
  </div>
 
  <div className="flex justify-end gap-2">
- <button className="btn btn-primary"> Soumettre la déclaration pour validation</button>
+ <button className="btn btn-primary"> Soumettre la déclaration</button>
  </div>
+ <p className="text-xs text-gray-500 text-right">Après soumission, vous arriverez sur la fiche de votre séance pour y attacher les fichiers de supports pédagogiques si besoin.</p>
  </form>
  </div>
  )

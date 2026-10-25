@@ -144,8 +144,6 @@ export default async function SessionEditPage({ params }: { params: { id: string
  <textarea name="work_done" rows={3} defaultValue={existing?.work_done ?? ''} disabled={disabled} placeholder="Simulations, jeux de rôle, analyse, correction…"></textarea></div>
  <div className="field"><label>Commentaire / Points à revoir</label>
  <textarea name="points_to_review" rows={2} defaultValue={existing?.points_to_review ?? ''} disabled={disabled} placeholder="Difficultés rencontrées, points à approfondir"></textarea></div>
- <div className="field"><label>% de complétion du programme</label>
- <input name="program_completion" type="number" min={0} max={100} defaultValue={existing?.program_completion ?? 100} disabled={disabled} /></div>
  </div>
  </div>
 

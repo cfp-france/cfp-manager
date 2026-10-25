@@ -260,6 +260,7 @@ export async function declareSession(formData: FormData) {
  if (!trainer) return
 
  const cfa_id = formData.get('cfa_id') as string
+ // Mission : laissée à l'admin (plus demandée au formateur dans l'UI)
  const mission_id = (formData.get('mission_id') as string) || null
  const session_date = formData.get('session_date') as string
  const start_time = formData.get('start_time') as string
@@ -309,7 +310,9 @@ export async function declareSession(formData: FormData) {
  })
 
  revalidatePath('/sessions'); revalidatePath('/home'); revalidatePath('/validation')
- redirect('/sessions?declared=1')
+ // Redirection vers la fiche de la nouvelle séance pour que le formateur puisse
+ // téléverser ses supports pédagogiques si besoin.
+ redirect(`/sessions/${session.id}?toast=` + encodeURIComponent('Séance déclarée. Vous pouvez attacher vos supports pédagogiques ci-dessous si besoin.'))
 }
 
 /**
