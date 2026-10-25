@@ -134,6 +134,50 @@ export async function unlinkTrainerFromUser(formData: FormData) {
 }
 
 /**
+ * Génère un mot de passe temporaire pour le formateur et l'applique directement
+ * dans auth.users (via SQL car on n'a pas le service role ici). Le mot de passe
+ * est affiché en clair à l'admin (via le toast) UNE SEULE FOIS, à transmettre
+ * au formateur qui devra le changer à sa prochaine connexion.
+ *
+ * Note : il est TECHNIQUEMENT IMPOSSIBLE de récupérer le mot de passe actuel
+ * d'un utilisateur — Supabase (comme toute app sérieuse) stocke un hash bcrypt
+ * à sens unique. On peut uniquement en définir un nouveau.
+ */
+export async function resetTrainerPassword(formData: FormData) {
+ const s = createClient()
+ const trainer_id = formData.get('id') as string
+ if (!trainer_id) return
+
+ const { data: trainer } = await s.from('trainers').select('user_id, first_name, last_name').eq('id', trainer_id).single()
+ if (!trainer?.user_id) {
+  redirect(`/trainers/${trainer_id}?toast=` + encodeURIComponent('Ce formateur n\'a pas de compte lié. Impossible de réinitialiser.') + '&toast_type=error')
+ }
+
+ // Génère un mot de passe aléatoire mémorisable : Mot4chiffres + Nom + !
+ const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+ const digits = '23456789'
+ let rand = ''
+ for (let i = 0; i < 3; i++) rand += letters[Math.floor(Math.random() * letters.length)]
+ for (let i = 0; i < 3; i++) rand += digits[Math.floor(Math.random() * digits.length)]
+ const newPassword = `CFP-${rand}`
+
+ // UPDATE direct dans auth.users via pgcrypto
+ const { error } = await s.rpc('admin_reset_trainer_password', {
+  p_user_id: trainer.user_id,
+  p_new_password: newPassword,
+ })
+ if (error) {
+  console.error('[resetTrainerPassword]', error)
+  redirect(`/trainers/${trainer_id}?toast=` + encodeURIComponent('Erreur : ' + error.message) + '&toast_type=error')
+ }
+
+ revalidatePath(`/trainers/${trainer_id}`)
+ redirect(`/trainers/${trainer_id}?toast=` + encodeURIComponent(
+  `Mot de passe réinitialisé pour ${trainer.first_name} ${trainer.last_name} → ${newPassword}  (à communiquer de façon sécurisée — le formateur devra le changer après connexion)`
+ ))
+}
+
+/**
  * Supprime définitivement un formateur. Bloque si des données le référencent
  * (séances, saisies, factures) : dans ce cas, suggère la désactivation.
  */

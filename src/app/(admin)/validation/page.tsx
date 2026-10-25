@@ -13,7 +13,7 @@ export default async function ValidationPage() {
  session:mission_sessions(
  id, session_date, start_time, end_time, hours_planned,
  self_declared, cfa_id, mission_id, room,
- mission:missions(id, name, cfa:cfa(id, name)),
+ mission:missions(id, name, formation:formations(code, name), cfa:cfa(id, name)),
  cfa:cfa(id, name, city)
  )`)
  .eq('status', 'submitted').order('work_date', { ascending: true })
@@ -48,6 +48,8 @@ export default async function ValidationPage() {
  const isSelfDeclared = e.session?.self_declared === true
  const cfaName = e.session?.mission?.cfa?.name ?? e.session?.cfa?.name ?? '—'
  const missionName = e.session?.mission?.name
+ const formationCode = e.session?.mission?.formation?.code
+ const formationName = e.session?.mission?.formation?.name
  const availableMissionsForCfa = (allMissions ?? []).filter((m: any) => m.cfa_id === e.session?.cfa_id)
  const currentCfaId = e.session?.mission?.cfa?.id ?? e.session?.cfa?.id ?? e.session?.cfa_id ?? ''
 
@@ -64,8 +66,11 @@ export default async function ValidationPage() {
  )}
  </div>
  <div className="text-xs text-gray-500 mt-0.5">
- {cfaName}{missionName ? ` · ${missionName}` : (isSelfDeclared ? ' · (aucune mission rattachée)' : '')}
- {e.session?.room ? ` · ${e.session.room}` : ''}
+ <b className="text-navy">{cfaName}</b>
+ {formationCode && <> · <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold">{formationCode}</span></>}
+ {formationName && <span className="text-gray-500"> {formationName}</span>}
+ {missionName ? <> · <i>{missionName}</i></> : (isSelfDeclared ? ' · (aucune mission rattachée)' : '')}
+ {e.session?.room ? ` · Salle ${e.session.room}` : ''}
  </div>
  </div>
  <span className="status status-pending">En attente</span>

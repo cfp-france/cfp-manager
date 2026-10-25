@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
-import { updateTrainer, toggleTrainerActive, unlinkTrainerFromUser, linkTrainerToUser, deleteTrainer } from '@/actions/referentials'
+import { updateTrainer, toggleTrainerActive, unlinkTrainerFromUser, linkTrainerToUser, deleteTrainer, resetTrainerPassword } from '@/actions/referentials'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { DocumentsPanel } from '@/components/DocumentsPanel'
@@ -91,6 +91,7 @@ export default async function EditTrainerPage({ params }: { params: { id: string
  <div className="card-header"><div className="card-title">Compte de connexion lié</div></div>
  <div className="card-body">
  {trainer.user_id ? (
+ <>
  <div className="flex items-center justify-between gap-3">
  <div>
  <div className="text-sm">Compte lié : <b>{(trainer as any).profile?.email ?? trainer.user_id}</b></div>
@@ -101,6 +102,23 @@ export default async function EditTrainerPage({ params }: { params: { id: string
  <button className="btn btn-outline btn-sm">Délier ce compte</button>
  </form>
  </div>
+
+ <div className="mt-4 pt-4 border-t border-gray-200 bg-amber-50 -mx-4 -mb-4 px-4 py-3 rounded-b">
+ <div className="text-xs font-semibold text-amber-900 mb-1">Mot de passe du formateur</div>
+ <div className="text-[11px] text-amber-800 mb-2">
+ <b>Le mot de passe actuel ne peut pas être affiché</b> — il est stocké de façon chiffrée à sens unique
+ (hash bcrypt), c'est une sécurité incontournable. En revanche, vous pouvez
+ <b> générer un nouveau mot de passe temporaire</b> à transmettre au formateur, qu'il pourra changer après connexion.
+ </div>
+ <form action={resetTrainerPassword}>
+ <input type="hidden" name="id" value={trainer.id} />
+ <button className="btn btn-sm btn-outline">
+ Générer un nouveau mot de passe temporaire
+ </button>
+ </form>
+ <div className="text-[10px] text-gray-500 mt-2">Le mot de passe généré apparaîtra dans la bulle verte en haut à droite — notez-le immédiatement, il ne sera plus affiché après.</div>
+ </div>
+ </>
  ) : (
  <form action={linkTrainerToUser} className="flex gap-2 items-end">
  <input type="hidden" name="trainer_id" value={trainer.id} />
