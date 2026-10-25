@@ -3,6 +3,33 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
+/**
+ * Vérifie si un formateur est déjà occupé sur une autre séance qui chevauche
+ * la plage horaire donnée. Retourne un message d'erreur à afficher ou null.
+ */
+async function checkTrainerConflict(
+ s: ReturnType<typeof createClient>,
+ trainer_id: string,
+ session_date: string,
+ start_time: string,
+ end_time: string,
+ exclude_session_id: string | null,
+) {
+ const { data: conflicts } = await s.from('mission_sessions')
+  .select('id, start_time, end_time, cfa:cfa(name), mission:missions(name)')
+  .eq('trainer_id', trainer_id)
+  .eq('session_date', session_date)
+ const overlapping = (conflicts ?? []).filter((c: any) => {
+  if (exclude_session_id && c.id === exclude_session_id) return false
+  return c.start_time < end_time && c.end_time > start_time
+ })
+ if (overlapping.length === 0) return null
+ const details = overlapping.map((c: any) =>
+  `${c.start_time.slice(0,5)}-${c.end_time.slice(0,5)} à ${(c as any).cfa?.name ?? 'CFA inconnu'}${(c as any).mission?.name ? ' ('+(c as any).mission.name+')' : ''}`
+ ).join(' · ')
+ return `Conflit : ce formateur est déjà programmé sur une autre séance ce jour-là : ${details}. Choisissez un autre formateur ou déprogrammez d'abord l'autre séance.`
+}
+
 export async function assignSubstitute(formData: FormData) {
  const s = createClient()
  const session_id = formData.get('session_id') as string
@@ -15,7 +42,14 @@ export async function assignSubstitute(formData: FormData) {
   redirect(return_to + sep + 'toast=' + encodeURIComponent('Formateur non sélectionné.') + '&toast_type=error')
  }
 
- const { data: sess } = await s.from('mission_sessions').select('trainer_id').eq('id', session_id).single()
+ const { data: sess } = await s.from('mission_sessions').select('trainer_id, session_date, start_time, end_time').eq('id', session_id).single()
+
+ // Détection de conflit : le formateur est-il déjà occupé sur une autre séance ce jour-là à cette heure ?
+ const conflict = await checkTrainerConflict(s, substitute_trainer_id, (sess as any)?.session_date, (sess as any)?.start_time, (sess as any)?.end_time, session_id)
+ if (conflict) {
+  const sep = return_to.includes('?') ? '&' : '?'
+  redirect(return_to + sep + 'toast=' + encodeURIComponent(conflict) + '&toast_type=error')
+ }
 
  await s.from('session_substitutions').insert({
   session_id,
@@ -62,6 +96,16 @@ export async function assignTrainerForTemplateOccurrence(formData: FormData) {
 
  const norm = (t: string) => t.length === 5 ? t + ':00' : t
  const st = norm(start_time)
+ const et = norm(end_time)
+
+ // Détection de conflit : nouveau formateur déjà occupé à cette plage horaire ?
+ if (new_trainer_id) {
+  const conflict = await checkTrainerConflict(s, new_trainer_id, session_date, st, et, null)
+  if (conflict) {
+   const sep = return_to.includes('?') ? '&' : '?'
+   redirect(return_to + sep + 'toast=' + encodeURIComponent(conflict) + '&toast_type=error')
+  }
+ }
 
  // 1. Priorité : chercher via source_template_slot_id (unique identifiant du créneau récurrent)
  let existingRows: any[] = []

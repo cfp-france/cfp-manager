@@ -10,7 +10,31 @@ export async function upsertSlot(formData: FormData) {
   const weekday = Number(p.weekday)
   const start_time = p.start_time
   const end_time = p.end_time
+  const force = p.force === '1'
   if (!cfa_id || !weekday || !start_time || !end_time) return
+
+  // Détection de conflit : le formateur a-t-il déjà un autre créneau récurrent qui chevauche
+  // sur ce jour de la semaine (toutes CFA confondues) ?
+  if (p.trainer_id && !force) {
+    const { data: conflicts } = await s.from('weekly_schedule_slots')
+      .select('id, cfa_id, start_time, end_time, cfa:cfa(name), formation:formations(code)')
+      .eq('trainer_id', p.trainer_id)
+      .eq('weekday', weekday)
+      .in('kind', ['lesson', 'event'])
+    const WEEKDAY_LABELS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+    const overlapping = (conflicts ?? []).filter((c: any) => {
+      if (p.id && c.id === p.id) return false // on s'édite soi-même
+      return c.start_time < end_time && c.end_time > start_time
+    })
+    if (overlapping.length > 0) {
+      const details = overlapping.map((c: any) =>
+        `${c.start_time.slice(0,5)}-${c.end_time.slice(0,5)} à ${(c as any).cfa?.name ?? 'CFA inconnu'}${(c as any).formation?.code ? ' ('+(c as any).formation.code+')' : ''}`
+      ).join(' · ')
+      redirect('/weekly-schedule?cfa=' + cfa_id + '&toast=' + encodeURIComponent(
+        `Conflit détecté : ce formateur est déjà programmé le ${WEEKDAY_LABELS[weekday]} sur un créneau qui chevauche (${details}). Modifiez le créneau existant ou choisissez un autre formateur.`
+      ) + '&toast_type=error')
+    }
+  }
 
   const payload = {
     cfa_id,
