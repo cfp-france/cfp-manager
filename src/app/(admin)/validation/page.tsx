@@ -12,9 +12,10 @@ export default async function ValidationPage() {
  trainer:trainers(first_name, last_name),
  session:mission_sessions(
  id, session_date, start_time, end_time, hours_planned,
- self_declared, cfa_id, mission_id, room,
+ self_declared, cfa_id, mission_id, room, source_template_slot_id,
  mission:missions(id, name, formation:formations(code, name), cfa:cfa(id, name)),
- cfa:cfa(id, name, city)
+ cfa:cfa(id, name, city),
+ template:weekly_schedule_slots!source_template_slot_id(formation:formations(code, name))
  )`)
  .eq('status', 'submitted').order('work_date', { ascending: true })
 
@@ -48,8 +49,9 @@ export default async function ValidationPage() {
  const isSelfDeclared = e.session?.self_declared === true
  const cfaName = e.session?.mission?.cfa?.name ?? e.session?.cfa?.name ?? '—'
  const missionName = e.session?.mission?.name
- const formationCode = e.session?.mission?.formation?.code
- const formationName = e.session?.mission?.formation?.name
+ // Formation : prioriser celle de la mission, sinon celle du créneau récurrent source
+ const formationCode = e.session?.mission?.formation?.code ?? e.session?.template?.formation?.code
+ const formationName = e.session?.mission?.formation?.name ?? e.session?.template?.formation?.name
  const availableMissionsForCfa = (allMissions ?? []).filter((m: any) => m.cfa_id === e.session?.cfa_id)
  const currentCfaId = e.session?.mission?.cfa?.id ?? e.session?.cfa?.id ?? e.session?.cfa_id ?? ''
 

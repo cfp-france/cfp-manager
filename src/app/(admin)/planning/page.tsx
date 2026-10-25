@@ -369,6 +369,7 @@ function WeekGrid({
                 const widthPct = 100 / maxCols
                 const leftPct = column * widthPct
                 const trainerRate = Number(item.trainer?.hourly_rate_default) || 0
+                const cfaRate = Number(item.cfaRate) || 0
                 const isTemplate = item.kind === 'template'
                 const blockContent = (
                   <div className="p-1 text-[10px] leading-tight font-semibold">
@@ -378,8 +379,10 @@ function WeekGrid({
                     </div>
                     <div className="truncate">{item.trainer ? `${item.trainer.first_name} ${item.trainer.last_name}` : 'À POURVOIR'}</div>
                     <div className="truncate opacity-80">{item.formation?.code ?? ''}</div>
-                    {item.trainer && trainerRate > 0 && (
-                      <div className="truncate opacity-70">{trainerRate} €/h</div>
+                    {(cfaRate > 0 || trainerRate > 0) && (
+                      <div className="truncate opacity-80 text-[9px]">
+                        CFA {cfaRate}€ / Form {trainerRate}€
+                      </div>
                     )}
                   </div>
                 )

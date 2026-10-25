@@ -74,7 +74,7 @@ export default async function WeeklySchedulePage({ searchParams }: { searchParam
     s.from('cfa').select('id, name, city').is('archived_at', null).order('name'),
     s.from('trainers').select('id, first_name, last_name').eq('active', true).order('last_name'),
     s.from('formations').select('id, code, name, competence_blocks(id, number, title)').is('archived_at', null).order('name'),
-    s.from('weekly_schedule_slots').select('*, cfa:cfa(id, name), trainer:trainers(first_name, last_name, hourly_rate_default), formation:formations(code, name), block:competence_blocks(number, title)'),
+    s.from('weekly_schedule_slots').select('*, cfa:cfa(id, name, default_hourly_rate), trainer:trainers(first_name, last_name, hourly_rate_default), formation:formations(code, name), block:competence_blocks(number, title)'),
     s.from('missions').select('id, name, cfa_id').is('archived_at', null).order('name'),
   ])
 
@@ -359,8 +359,10 @@ function SlotCell({ slot, top, height, bg, border, text, leftPct, widthPct, trai
         {slot.kind === 'lesson' && <>
           <div className="truncate">{slot.trainer ? `${slot.trainer.first_name} ${slot.trainer.last_name}` : 'À POURVOIR'}</div>
           <div className="truncate opacity-80">{slot.formation?.code ?? ''}{slot.block ? ` · B${slot.block.number}` : ''}</div>
-          {slot.trainer?.hourly_rate_default != null && Number(slot.trainer.hourly_rate_default) > 0 && (
-            <div className="truncate opacity-70">{Number(slot.trainer.hourly_rate_default)} €/h</div>
+          {(slot.trainer?.hourly_rate_default != null || slot.cfa?.default_hourly_rate != null) && (
+            <div className="truncate opacity-80 text-[9px]">
+              CFA {Number(slot.cfa?.default_hourly_rate ?? 0)}€ / Form {Number(slot.trainer?.hourly_rate_default ?? 0)}€
+            </div>
           )}
         </>}
         {slot.kind === 'lunch_break' && <div>Pause déjeuner</div>}
