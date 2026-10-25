@@ -149,16 +149,25 @@ export async function generateSessionsFromSchedule(formData: FormData) {
 
     for (const sl of slots) {
       if ((sl as any).weekday !== weekday) continue
-      // Vérifier qu'une séance identique n'existe pas déjà
-      const { data: dup } = await s.from('mission_sessions').select('id')
+      // Vérifier qu'une séance identique n'existe pas déjà — on utilise .limit(1) et pas .maybeSingle()
+      // car maybeSingle retourne null quand il y a plusieurs doublons et laisse insérer un nouveau doublon.
+      // On matche aussi par source_template_slot_id pour couvrir le cas où le template a été instancié.
+      const { data: dupsBySlot } = await s.from('mission_sessions').select('id')
+        .eq('source_template_slot_id', (sl as any).id)
+        .eq('session_date', dayIso)
+        .limit(1)
+      if (dupsBySlot && dupsBySlot.length > 0) continue
+      const { data: dupsByTime } = await s.from('mission_sessions').select('id')
         .eq('session_date', dayIso)
         .eq('start_time', (sl as any).start_time)
         .eq('cfa_id', cfa_id)
-        .maybeSingle()
-      if (dup?.id) continue
+        .eq('trainer_id', (sl as any).trainer_id ?? '00000000-0000-0000-0000-000000000000')
+        .limit(1)
+      if (dupsByTime && dupsByTime.length > 0) continue
       sessionsToInsert.push({
         mission_id: targetMissionId,
         cfa_id,
+        source_template_slot_id: (sl as any).id,
         session_date: dayIso,
         start_time: (sl as any).start_time,
         end_time: (sl as any).end_time,
