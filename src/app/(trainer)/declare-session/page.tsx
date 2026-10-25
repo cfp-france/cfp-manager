@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireTrainer } from '@/lib/utils'
 import { declareSession } from '@/actions/entries'
 import { PedagogyPicker } from '@/components/PedagogyPicker'
+import { FormationClassPicker } from '@/components/FormationClassPicker'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,6 +70,9 @@ export default async function DeclareSessionPage() {
  {cfas.map(c => <option key={c.id} value={c.id}>{c.name}{c.city ? ` (${c.city})` : ''}</option>)}
  </select>
  <p className="text-[11px] text-gray-500 mt-1">Si le CFA n'apparaît pas, demandez à l'administration de le créer.</p>
+ </div>
+ <div className="md:col-span-2">
+ <FormationClassPicker formations={formations.map(f => ({ id: f.id, code: f.code, name: f.name }))} />
  </div>
  </div>
  </div>

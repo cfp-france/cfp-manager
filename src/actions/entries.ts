@@ -262,6 +262,8 @@ export async function declareSession(formData: FormData) {
  const cfa_id = formData.get('cfa_id') as string
  // Mission : laissée à l'admin (plus demandée au formateur dans l'UI)
  const mission_id = (formData.get('mission_id') as string) || null
+ const formation_id = (formData.get('formation_id') as string) || null
+ const declared_class_label = (formData.get('declared_class_label') as string) || null
  const session_date = formData.get('session_date') as string
  const start_time = formData.get('start_time') as string
  const end_time = formData.get('end_time') as string
@@ -269,11 +271,15 @@ export async function declareSession(formData: FormData) {
  const room = (formData.get('room') as string) || null
 
  if (!cfa_id || !session_date || !start_time || !end_time) return
+ // Classe/formation obligatoire : soit une formation du référentiel, soit un texte libre
+ if (!formation_id && !declared_class_label) return
 
  // 1. Créer la mission_session avec self_declared=true
  const { data: session, error: sessErr } = await s.from('mission_sessions').insert({
  cfa_id,
  mission_id,
+ formation_id,
+ declared_class_label,
  session_date,
  start_time,
  end_time,
