@@ -199,14 +199,19 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
   // Codes couleur formateurs
   const colorByTrainer = buildTrainerColorMap((trainers ?? []).map((t: any) => t.id))
 
-  // KPIs
-  let totalHours = 0, ca = 0, unassignedCount = 0
+  // KPIs : les heures À POURVOIR (sans formateur) ne sont PAS comptées dans le CA prévisionnel
+  // car elles ne pourront pas être facturées tant qu'elles ne sont pas pourvues.
+  let totalHours = 0, ca = 0, unassignedCount = 0, unassignedHours = 0
   for (const it of items) {
     const durationMin = toMin(it.end_time) - toMin(it.start_time) - (it.break_minutes ?? 0)
     const h = Math.max(0, durationMin / 60)
     totalHours += h
-    ca += h * (it.cfaRate ?? 0)
-    if (!it.trainer_id) unassignedCount++
+    if (it.trainer_id) {
+      ca += h * (it.cfaRate ?? 0)
+    } else {
+      unassignedCount++
+      unassignedHours += h
+    }
   }
 
   const dayStart = toMin('08:00')
@@ -247,11 +252,14 @@ export default async function PlanningPage({ searchParams }: { searchParams: { w
         <div className="card p-4">
           <div className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">CA prévisionnel (semaine)</div>
           <div className="text-2xl font-bold text-navy mt-1">{fmtEuro(ca)}</div>
-          <div className="text-[10px] text-gray-500 mt-1">Basé sur les tarifs CFA renseignés sur les missions / fiches CFA.</div>
+          <div className="text-[10px] text-gray-500 mt-1">Basé sur les tarifs CFA et les heures <b>avec formateur affecté uniquement</b>. Les créneaux à pourvoir ne sont pas comptés.</div>
         </div>
         <div className={`card p-4 ${unassignedCount > 0 ? 'bg-red-50 border-red-500 border-l-4' : 'bg-green-50 border-green-500 border-l-4'}`}>
           <div className="text-[11px] text-gray-600 font-semibold uppercase tracking-wider">Séances à pourvoir</div>
           <div className={`text-2xl font-bold mt-1 ${unassignedCount > 0 ? 'text-red-700' : 'text-green-700'}`}>{unassignedCount}</div>
+          {unassignedHours > 0 && (
+            <div className="text-[10px] text-red-700 mt-1 font-semibold">{fmtHours(unassignedHours)} non facturables</div>
+          )}
         </div>
       </div>
 

@@ -161,20 +161,30 @@ export async function generateCfaInvoice(formData: FormData) {
  const cfaDefaultRate = Number(cfaRow?.default_hourly_rate ?? 0)
 
  // Récupérer heures validées pour ce CFA sur la période, non encore facturées côté CFA
+ // On exclut aussi les séances dont le trainer actuel est null (séances à pourvoir / déprogrammées)
+ // et les séances qui attendent un remplacement — elles ne doivent pas être facturées.
  const { data: entries } = await s.from('time_entries')
- .select(`id, work_date, hours_actual,
+ .select(`id, work_date, hours_actual, trainer_id,
  trainer:trainers(first_name, last_name),
- session:mission_sessions(mission_id, cfa_id,
+ session:mission_sessions(id, mission_id, cfa_id, trainer_id, needs_substitution,
  mission:missions(name, cfa_hourly_rate, cfa_id))`)
  .eq('status', 'validated')
  .gte('work_date', from)
  .lte('work_date', to)
  .is('cfa_invoice_id', null)
 
- // Filtrer côté app par cfa_id (via session OU mission)
- const filtered = (entries ?? []).filter((e: any) =>
- e.session?.cfa_id === cfa_id || e.session?.mission?.cfa_id === cfa_id
- )
+ // Filtrer côté app : CFA correspondant + séance avec un formateur + pas en attente de remplacement
+ const filtered = (entries ?? []).filter((e: any) => {
+  const cfaMatch = e.session?.cfa_id === cfa_id || e.session?.mission?.cfa_id === cfa_id
+  if (!cfaMatch) return false
+  // Pas de formateur sur la saisie elle-même → non facturable
+  if (!e.trainer_id) return false
+  // La séance est en attente de remplacement → non facturable (hour "à pourvoir")
+  if (e.session?.needs_substitution === true) return false
+  // La séance n'a plus de formateur actuel (déprogrammée après coup) → non facturable
+  if (e.session && e.session.trainer_id === null) return false
+  return true
+ })
  if (filtered.length === 0) redirect(`/invoicing?empty=1&cfa=${cfa_id}&year=${year}&month=${month}`)
 
  let totalHours = 0, totalHt = 0
