@@ -8,6 +8,14 @@ export async function createMissionWithRecurrence(formData: FormData) {
  const p: any = Object.fromEntries(formData)
  const weekdays = formData.getAll('weekdays').map((v) => Number(v))
 
+ // Validation : au moins un jour de la semaine coché, sinon aucune séance ne sera créée
+ if (weekdays.length === 0) {
+  redirect('/missions/new?toast=' + encodeURIComponent('Erreur : vous devez cocher au moins un jour de la semaine (sinon aucune séance ne sera générée).') + '&toast_type=error')
+ }
+ if (!p.cfa_id || !p.name || !p.start_date || !p.end_date) {
+  redirect('/missions/new?toast=' + encodeURIComponent('Erreur : nom, CFA et période obligatoires.') + '&toast_type=error')
+ }
+
  // 1. Créer la mission
  const { data: mission, error: err1 } = await s.from('missions').insert({
  name: p.name,
