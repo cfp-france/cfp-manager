@@ -21,6 +21,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
  { href: '/mon-planning', label: 'Mon planning' },
  { href: '/sessions', label: 'Saisir mes séances', badge: toSubmit },
  { href: '/declare-session', label: 'Déclarer une séance' },
+ { href: '/historique-classe', label: 'Historique classe (remplacement)' },
  { href: '/availability', label: 'Mes disponibilités' },
  { href: '/absence', label: 'Déclarer une absence' },
  { href: '/earnings', label: 'Mes rémunérations' },
