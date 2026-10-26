@@ -184,6 +184,7 @@ export async function resetTrainerPassword(formData: FormData) {
 export async function deleteTrainer(formData: FormData) {
  const s = createClient()
  const id = formData.get('id') as string
+ const force = formData.get('force') === '1'
  if (!id) return
 
  // Vérifier qu'aucune donnée critique ne pointe vers ce formateur
@@ -193,21 +194,51 @@ export async function deleteTrainer(formData: FormData) {
   s.from('trainer_invoices').select('*', { count: 'exact', head: true }).eq('trainer_id', id),
  ])
  const total = (nbSessions ?? 0) + (nbEntries ?? 0) + (nbInvoices ?? 0)
- if (total > 0) {
-  redirect('/trainers?toast=' + encodeURIComponent(
-   `Impossible de supprimer : ${nbSessions ?? 0} séance(s), ${nbEntries ?? 0} saisie(s), ${nbInvoices ?? 0} facture(s) rattachées. Désactivez-le plutôt.`
+ if (total > 0 && !force) {
+  redirect(`/trainers/${id}?toast=` + encodeURIComponent(
+   `Impossible de supprimer : ${nbSessions ?? 0} séance(s), ${nbEntries ?? 0} saisie(s), ${nbInvoices ?? 0} facture(s) rattachées. Utilisez « Suppression forcée » pour tout supprimer d'un coup, ou désactivez-le simplement.`
   ) + '&toast_type=error')
  }
 
- // Nettoyage des références non-critiques
+ if (force) {
+  // Suppression en cascade : factures, saisies, séances, docs, dispos, créneaux récurrents
+  // Récupérer d'abord les ids des factures et saisies pour nettoyage des lignes
+  const { data: invoices } = await s.from('trainer_invoices').select('id').eq('trainer_id', id)
+  const invoiceIds = (invoices ?? []).map((x: any) => x.id)
+  if (invoiceIds.length > 0) {
+   await s.from('trainer_invoice_lines').delete().in('invoice_id', invoiceIds)
+   await s.from('trainer_invoices').delete().in('id', invoiceIds)
+  }
+  // Récupérer les sessions pour nettoyer time_entries + documents
+  const { data: sessions } = await s.from('mission_sessions').select('id').eq('trainer_id', id)
+  const sessionIds = (sessions ?? []).map((x: any) => x.id)
+  if (sessionIds.length > 0) {
+   await s.from('time_entries').delete().in('session_id', sessionIds)
+   await s.from('session_documents').delete().in('session_id', sessionIds)
+   await s.from('mission_sessions').delete().in('id', sessionIds)
+  }
+  // Toutes les time_entries résiduelles (saisies de ce formateur sans session attachée à lui)
+  await s.from('time_entries').delete().eq('trainer_id', id)
+  // Historiques divers
+  await s.from('session_substitutions').delete().eq('original_trainer_id', id)
+  await s.from('session_substitutions').delete().eq('substitute_trainer_id', id)
+  await s.from('trainer_absences').delete().eq('trainer_id', id)
+  await s.from('deletion_requests').delete().eq('trainer_id', id)
+ }
+
+ // Nettoyage des références non-critiques (toujours)
  await s.from('trainer_availabilities').delete().eq('trainer_id', id)
  await s.from('trainer_documents').delete().eq('trainer_id', id)
  await s.from('weekly_schedule_slots').update({ trainer_id: null }).eq('trainer_id', id)
 
  const { error } = await s.from('trainers').delete().eq('id', id)
  if (error) {
-  redirect('/trainers?toast=' + encodeURIComponent('Erreur : ' + error.message) + '&toast_type=error')
+  redirect(`/trainers/${id}?toast=` + encodeURIComponent('Erreur : ' + error.message) + '&toast_type=error')
  }
  revalidatePath('/trainers')
- redirect('/trainers?toast=' + encodeURIComponent('Formateur supprimé définitivement.'))
+ redirect('/trainers?toast=' + encodeURIComponent(
+  force
+   ? 'Formateur supprimé avec toutes ses données associées (séances, saisies, factures).'
+   : 'Formateur supprimé définitivement.'
+ ))
 }

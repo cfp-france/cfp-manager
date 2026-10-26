@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
-import { createTrainer, linkTrainerToUser } from '@/actions/referentials'
+import { createTrainer, linkTrainerToUser, deleteTrainer, toggleTrainerActive } from '@/actions/referentials'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -52,7 +52,42 @@ export default async function TrainersPage() {
  </form>}
  </td>
  <td>{t.active ? <span className="status status-active">Actif</span> : <span className="status status-archived">Inactif</span>}</td>
- <td><Link href={`/trainers/${t.id}`} className="btn btn-sm btn-outline">Modifier</Link></td>
+ <td>
+  <div className="flex gap-1 flex-wrap justify-end">
+   <Link href={`/trainers/${t.id}`} className="btn btn-sm btn-outline">Modifier</Link>
+   <form action={toggleTrainerActive}>
+    <input type="hidden" name="id" value={t.id} />
+    <input type="hidden" name="activate" value={t.active ? '0' : '1'} />
+    <button className={`btn btn-sm ${t.active ? 'btn-outline' : 'btn-success'}`}
+     title={t.active ? 'Désactiver (conserve les données)' : 'Réactiver'}>
+     {t.active ? 'Désactiver' : 'Réactiver'}
+    </button>
+   </form>
+   <details className="relative inline-block">
+    <summary className="btn btn-sm btn-danger cursor-pointer list-none" title="Supprimer définitivement">Supprimer</summary>
+    <div className="absolute right-0 bg-white border-2 border-red-500 rounded-md shadow-xl p-2 mt-1 z-20 w-[280px] text-left">
+     <div className="text-[11px] text-gray-700 mb-2">
+      Choisissez le type de suppression :
+     </div>
+     <form action={deleteTrainer} className="mb-2">
+      <input type="hidden" name="id" value={t.id} />
+      <button className="btn btn-sm btn-outline w-full">
+       Suppression simple
+       <div className="text-[9px] text-gray-500">(échoue si des séances / factures existent)</div>
+      </button>
+     </form>
+     <form action={deleteTrainer}>
+      <input type="hidden" name="id" value={t.id} />
+      <input type="hidden" name="force" value="1" />
+      <button className="btn btn-sm btn-danger w-full">
+       ⚠ Suppression forcée
+       <div className="text-[9px]">(efface aussi séances, saisies, factures)</div>
+      </button>
+     </form>
+    </div>
+   </details>
+  </div>
+ </td>
  </tr>
  ))}
  {(!trainers || trainers.length === 0) && <tr><td colSpan={7} className="text-center text-gray-500 py-8">Aucun formateur.</td></tr>}
