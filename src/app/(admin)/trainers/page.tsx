@@ -1,6 +1,7 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { createTrainer, linkTrainerToUser, deleteTrainer, toggleTrainerActive } from '@/actions/referentials'
+import { ConfirmButton } from '@/components/ConfirmButton'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -57,10 +58,11 @@ export default async function TrainersPage() {
    <Link href={`/trainers/${t.id}`} className="btn btn-sm btn-outline">Modifier</Link>
    <form action={deleteTrainer}>
     <input type="hidden" name="id" value={t.id} />
-    <button className="btn btn-sm btn-danger"
-     title="Retire le formateur de la liste. Les séances et saisies passées restent intactes pour l'historique.">
-     Supprimer
-    </button>
+    <ConfirmButton
+     className="btn btn-sm btn-danger"
+     title="Retire le formateur de la liste. Les séances et saisies passées restent intactes pour l'historique."
+     message={`Supprimer ${t.first_name} ${t.last_name} de la liste ?\n\nSes séances passées et saisies validées resteront conservées pour l'historique.\nSes séances futures sans saisie passeront à « À POURVOIR ».\nIl ne pourra plus se connecter.\n\nConfirmer la suppression ?`}
+    >Supprimer</ConfirmButton>
    </form>
   </div>
  </td>

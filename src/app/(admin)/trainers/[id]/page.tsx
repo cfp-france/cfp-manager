@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { DocumentsPanel } from '@/components/DocumentsPanel'
 import { AvailabilityPanel } from '@/components/AvailabilityPanel'
+import { ConfirmButton } from '@/components/ConfirmButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,9 +76,11 @@ export default async function EditTrainerPage({ params }: { params: { id: string
  </form>
  <form action={deleteTrainer}>
  <input type="hidden" name="id" value={trainer.id} />
- <button className="btn btn-danger" title="Retire le formateur de la liste. Les séances et saisies passées restent intactes pour l'historique.">
-  Supprimer de la liste
- </button>
+ <ConfirmButton
+  className="btn btn-danger"
+  title="Retire le formateur de la liste. Les séances et saisies passées restent intactes pour l'historique."
+  message={`Supprimer ${trainer.first_name} ${trainer.last_name} de la liste ?\n\nSes séances passées et saisies validées resteront conservées pour l'historique.\nSes séances futures sans saisie passeront à « À POURVOIR ».\nIl ne pourra plus se connecter.\n\nConfirmer la suppression ?`}
+ >Supprimer de la liste</ConfirmButton>
  </form>
  </div>
  <div className="flex gap-2">
