@@ -75,30 +75,10 @@ export default async function EditTrainerPage({ params }: { params: { id: string
  </form>
  <form action={deleteTrainer}>
  <input type="hidden" name="id" value={trainer.id} />
- <button className="btn btn-danger" title="Suppression définitive — ne fonctionne que si aucune séance ou facture ne pointe vers ce formateur">
-  Supprimer définitivement
+ <button className="btn btn-danger" title="Retire le formateur de la liste. Les séances et saisies passées restent intactes pour l'historique.">
+  Supprimer de la liste
  </button>
  </form>
- <details className="inline-block">
-  <summary className="btn btn-danger cursor-pointer list-none" title="Supprime le formateur ET toutes ses données associées">
-   ⚠ Suppression forcée (avec données)
-  </summary>
-  <form action={deleteTrainer} className="absolute bg-white border-2 border-red-500 rounded-md shadow-xl p-3 mt-2 z-20 max-w-sm">
-   <input type="hidden" name="id" value={trainer.id} />
-   <input type="hidden" name="force" value="1" />
-   <div className="text-xs text-red-700 mb-2 font-semibold">
-    ⚠ Cette action supprime <b>irréversiblement</b> le formateur ET :
-    <ul className="list-disc pl-5 mt-1 font-normal">
-     <li>Toutes ses séances programmées (passées et futures)</li>
-     <li>Toutes ses saisies d'heures (y compris validées)</li>
-     <li>Toutes ses factures et lignes de factures</li>
-     <li>Ses documents, disponibilités, absences, demandes</li>
-    </ul>
-    <div className="mt-2 italic">Les créneaux récurrents gardent leur plage horaire mais sans formateur affecté.</div>
-   </div>
-   <button className="btn btn-danger btn-sm w-full">Confirmer la suppression forcée</button>
-  </form>
- </details>
  </div>
  <div className="flex gap-2">
  <Link href="/trainers" className="btn btn-outline">Annuler</Link>

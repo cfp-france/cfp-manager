@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 export default async function TrainersPage() {
  const s = createClient()
  const [{ data: trainers }, { data: profiles }] = await Promise.all([
- s.from('trainers').select('*').order('last_name'),
+ s.from('trainers').select('*').is('archived_at', null).order('last_name'),
  s.from('profiles').select('id, email, role').eq('role', 'trainer'),
  ])
  return (
@@ -55,37 +55,13 @@ export default async function TrainersPage() {
  <td>
   <div className="flex gap-1 flex-wrap justify-end">
    <Link href={`/trainers/${t.id}`} className="btn btn-sm btn-outline">Modifier</Link>
-   <form action={toggleTrainerActive}>
+   <form action={deleteTrainer}>
     <input type="hidden" name="id" value={t.id} />
-    <input type="hidden" name="activate" value={t.active ? '0' : '1'} />
-    <button className={`btn btn-sm ${t.active ? 'btn-outline' : 'btn-success'}`}
-     title={t.active ? 'Désactiver (conserve les données)' : 'Réactiver'}>
-     {t.active ? 'Désactiver' : 'Réactiver'}
+    <button className="btn btn-sm btn-danger"
+     title="Retire le formateur de la liste. Les séances et saisies passées restent intactes pour l'historique.">
+     Supprimer
     </button>
    </form>
-   <details className="relative inline-block">
-    <summary className="btn btn-sm btn-danger cursor-pointer list-none" title="Supprimer définitivement">Supprimer</summary>
-    <div className="absolute right-0 bg-white border-2 border-red-500 rounded-md shadow-xl p-2 mt-1 z-20 w-[280px] text-left">
-     <div className="text-[11px] text-gray-700 mb-2">
-      Choisissez le type de suppression :
-     </div>
-     <form action={deleteTrainer} className="mb-2">
-      <input type="hidden" name="id" value={t.id} />
-      <button className="btn btn-sm btn-outline w-full">
-       Suppression simple
-       <div className="text-[9px] text-gray-500">(échoue si des séances / factures existent)</div>
-      </button>
-     </form>
-     <form action={deleteTrainer}>
-      <input type="hidden" name="id" value={t.id} />
-      <input type="hidden" name="force" value="1" />
-      <button className="btn btn-sm btn-danger w-full">
-       ⚠ Suppression forcée
-       <div className="text-[9px]">(efface aussi séances, saisies, factures)</div>
-      </button>
-     </form>
-    </div>
-   </details>
   </div>
  </td>
  </tr>

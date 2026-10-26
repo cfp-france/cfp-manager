@@ -181,64 +181,62 @@ export async function resetTrainerPassword(formData: FormData) {
  * Supprime définitivement un formateur. Bloque si des données le référencent
  * (séances, saisies, factures) : dans ce cas, suggère la désactivation.
  */
+/**
+ * « Supprime » un formateur = archivage logique.
+ * Le formateur disparaît des listes et dropdowns, mais toutes ses données
+ * historiques (séances passées, saisies validées, factures) restent intactes
+ * pour la traçabilité comptable et pédagogique.
+ *
+ * Concrètement : active=false + archived_at=now(). Les requêtes
+ * `.is('archived_at', null).eq('active', true)` l'excluent partout.
+ *
+ * Nettoyage limité :
+ *   - Créneaux récurrents : trainer_id → NULL (créneau devient "À POURVOIR")
+ *   - Mission_sessions FUTURES sans saisie : trainer_id → NULL (séance à repourvoir)
+ *   - Compte auth lié : optionnellement délié (pour qu'il ne puisse plus se connecter)
+ */
 export async function deleteTrainer(formData: FormData) {
  const s = createClient()
  const id = formData.get('id') as string
- const force = formData.get('force') === '1'
  if (!id) return
 
- // Vérifier qu'aucune donnée critique ne pointe vers ce formateur
- const [{ count: nbSessions }, { count: nbEntries }, { count: nbInvoices }] = await Promise.all([
-  s.from('mission_sessions').select('*', { count: 'exact', head: true }).eq('trainer_id', id),
-  s.from('time_entries').select('*', { count: 'exact', head: true }).eq('trainer_id', id),
-  s.from('trainer_invoices').select('*', { count: 'exact', head: true }).eq('trainer_id', id),
- ])
- const total = (nbSessions ?? 0) + (nbEntries ?? 0) + (nbInvoices ?? 0)
- if (total > 0 && !force) {
-  redirect(`/trainers/${id}?toast=` + encodeURIComponent(
-   `Impossible de supprimer : ${nbSessions ?? 0} séance(s), ${nbEntries ?? 0} saisie(s), ${nbInvoices ?? 0} facture(s) rattachées. Utilisez « Suppression forcée » pour tout supprimer d'un coup, ou désactivez-le simplement.`
-  ) + '&toast_type=error')
- }
+ const today = new Date().toISOString().slice(0, 10)
 
- if (force) {
-  // Suppression en cascade : factures, saisies, séances, docs, dispos, créneaux récurrents
-  // Récupérer d'abord les ids des factures et saisies pour nettoyage des lignes
-  const { data: invoices } = await s.from('trainer_invoices').select('id').eq('trainer_id', id)
-  const invoiceIds = (invoices ?? []).map((x: any) => x.id)
-  if (invoiceIds.length > 0) {
-   await s.from('trainer_invoice_lines').delete().in('invoice_id', invoiceIds)
-   await s.from('trainer_invoices').delete().in('id', invoiceIds)
-  }
-  // Récupérer les sessions pour nettoyer time_entries + documents
-  const { data: sessions } = await s.from('mission_sessions').select('id').eq('trainer_id', id)
-  const sessionIds = (sessions ?? []).map((x: any) => x.id)
-  if (sessionIds.length > 0) {
-   await s.from('time_entries').delete().in('session_id', sessionIds)
-   await s.from('session_documents').delete().in('session_id', sessionIds)
-   await s.from('mission_sessions').delete().in('id', sessionIds)
-  }
-  // Toutes les time_entries résiduelles (saisies de ce formateur sans session attachée à lui)
-  await s.from('time_entries').delete().eq('trainer_id', id)
-  // Historiques divers
-  await s.from('session_substitutions').delete().eq('original_trainer_id', id)
-  await s.from('session_substitutions').delete().eq('substitute_trainer_id', id)
-  await s.from('trainer_absences').delete().eq('trainer_id', id)
-  await s.from('deletion_requests').delete().eq('trainer_id', id)
- }
-
- // Nettoyage des références non-critiques (toujours)
- await s.from('trainer_availabilities').delete().eq('trainer_id', id)
- await s.from('trainer_documents').delete().eq('trainer_id', id)
+ // 1. Libérer les créneaux récurrents : plus affectés à ce formateur
  await s.from('weekly_schedule_slots').update({ trainer_id: null }).eq('trainer_id', id)
 
- const { error } = await s.from('trainers').delete().eq('id', id)
+ // 2. Pour les séances FUTURES qui n'ont pas encore de saisie : enlever le formateur
+ //    (sinon la séance apparaîtrait "orpheline" dans le futur avec un formateur archivé)
+ const { data: futureSessions } = await s.from('mission_sessions')
+  .select('id')
+  .eq('trainer_id', id)
+  .gte('session_date', today)
+ const futureIds = (futureSessions ?? []).map((x: any) => x.id)
+ if (futureIds.length > 0) {
+  // Garder seulement celles sans time_entry (sinon on garde l'historique)
+  const { data: entriesForFuture } = await s.from('time_entries').select('session_id').in('session_id', futureIds)
+  const sessionsWithEntries = new Set((entriesForFuture ?? []).map((e: any) => e.session_id))
+  const futureNoEntries = futureIds.filter(sid => !sessionsWithEntries.has(sid))
+  if (futureNoEntries.length > 0) {
+   await s.from('mission_sessions').update({ trainer_id: null, needs_substitution: true }).in('id', futureNoEntries)
+  }
+ }
+
+ // 3. Délier le compte de connexion (ne peut plus se connecter)
+ await s.from('trainers').update({ user_id: null }).eq('id', id)
+
+ // 4. Archivage logique
+ const { error } = await s.from('trainers')
+  .update({ active: false, archived_at: new Date().toISOString() })
+  .eq('id', id)
  if (error) {
   redirect(`/trainers/${id}?toast=` + encodeURIComponent('Erreur : ' + error.message) + '&toast_type=error')
  }
+
  revalidatePath('/trainers')
+ revalidatePath('/planning')
+ revalidatePath('/weekly-schedule')
  redirect('/trainers?toast=' + encodeURIComponent(
-  force
-   ? 'Formateur supprimé avec toutes ses données associées (séances, saisies, factures).'
-   : 'Formateur supprimé définitivement.'
+  'Formateur supprimé. Ses séances passées et saisies restent conservées pour l\'historique.'
  ))
 }
