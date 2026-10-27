@@ -56,7 +56,7 @@ export async function generateMyMonthlyInvoice(formData: FormData) {
 
  // Récupérer les heures validées sur la période, non encore facturées
  const { data: entries } = await s.from('time_entries')
- .select(`id, work_date, hours_actual, actual_start, actual_end,
+ .select(`id, session_id, work_date, hours_actual, actual_start, actual_end,
  session:mission_sessions(mission_id, cfa_id,
  mission:missions(name, trainer_hourly_rate, cfa:cfa(name)),
  cfa:cfa(name))`)
@@ -70,11 +70,12 @@ export async function generateMyMonthlyInvoice(formData: FormData) {
  redirect('/invoices?empty=1')
  }
 
- // Garde-fou anti-doublons : dédupliquer par (work_date + horaires) — on garde la plus récente.
- // Cela évite qu'une facture formateur compte 2 fois la même séance si des doublons historiques existaient.
+ // Garde-fou anti-doublons : dédupliquer par session_id (une séance = une seule ligne facturée).
+ // Ce n'est pas une dédup "par horaires" qui serait fausse si un formateur fait vraiment
+ // 2 séances distinctes dans la journée. On compte UNE SAISIE PAR SÉANCE, point.
  const seenKeys = new Map<string, any>()
  for (const e of entries) {
-  const key = `${e.work_date}|${(e as any).actual_start ?? ''}|${(e as any).actual_end ?? ''}|${Number((e as any).hours_actual ?? 0)}`
+  const key = (e as any).session_id ?? (e as any).id
   const existing = seenKeys.get(key)
   if (!existing || (e as any).id > existing.id) seenKeys.set(key, e)
  }
@@ -175,7 +176,7 @@ export async function generateCfaInvoice(formData: FormData) {
  // On exclut aussi les séances dont le trainer actuel est null (séances à pourvoir / déprogrammées)
  // et les séances qui attendent un remplacement — elles ne doivent pas être facturées.
  const { data: entries } = await s.from('time_entries')
- .select(`id, work_date, hours_actual, trainer_id,
+ .select(`id, session_id, work_date, hours_actual, trainer_id,
  trainer:trainers(first_name, last_name),
  session:mission_sessions(id, mission_id, cfa_id, trainer_id, needs_substitution,
  mission:missions(name, cfa_hourly_rate, cfa_id))`)
@@ -197,12 +198,11 @@ export async function generateCfaInvoice(formData: FormData) {
   return true
  })
 
- // Garde-fou anti-doublons : au cas où plusieurs saisies validées pointent vers la même
- // (date de travail, trainer, horaires) à cause d'un bug historique → on garde la plus récente.
+ // Garde-fou anti-doublons : dédupliquer par session_id (une séance = une seule ligne facturée).
+ // Si un formateur fait 2 vraies séances distinctes dans la journée, leurs session_id diffèrent → les 2 sont bien comptées.
  const seenKeys = new Map<string, any>()
  for (const e of preFiltered) {
-  const se: any = e.session
-  const key = `${e.work_date}|${e.trainer_id}|${se?.start_time ?? ''}|${se?.end_time ?? ''}`
+  const key = (e as any).session_id ?? (e as any).id
   const existing = seenKeys.get(key)
   if (!existing || (e.id > existing.id)) seenKeys.set(key, e)
  }
