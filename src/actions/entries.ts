@@ -48,8 +48,43 @@ export async function submitTimeEntry(formData: FormData) {
  } else {
  await s.from('time_entries').insert(payload)
  }
- revalidatePath('/sessions'); revalidatePath('/home')
- redirect('/sessions')
+
+ // Fichiers de supports pédagogiques attachés au même formulaire :
+ // on les uploade dans le même geste que la saisie pour ne pas perdre l'état du formulaire.
+ const files = formData.getAll('pedagogical_files') as File[]
+ const uploadedNames: string[] = []
+ const failed: string[] = []
+ for (const file of files) {
+   if (!file || typeof file === 'string' || file.size === 0) continue
+   if (file.size > 20 * 1024 * 1024) { failed.push(`${file.name} (trop volumineux, > 20 Mo)`); continue }
+   const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60)}`
+   const path = `${session_id}/${safeName}`
+   const buf = await file.arrayBuffer()
+   const { error: upErr } = await s.storage.from('session-docs').upload(path, buf, {
+     contentType: file.type || 'application/octet-stream',
+     upsert: false,
+   })
+   if (upErr) { failed.push(`${file.name} (${upErr.message})`); continue }
+   await s.from('session_documents').insert({
+     session_id,
+     trainer_id: trainer.id,
+     label: file.name,
+     storage_path: path,
+     mime_type: file.type || null,
+     size_bytes: file.size,
+     uploaded_by: user.id,
+   })
+   uploadedNames.push(file.name)
+ }
+
+ revalidatePath('/sessions'); revalidatePath('/home'); revalidatePath(`/sessions/${session_id}`)
+
+ // Construire le message de retour
+ let msg = isDraft ? 'Saisie enregistrée en brouillon.' : 'Saisie soumise pour validation.'
+ if (uploadedNames.length > 0) msg += ` ${uploadedNames.length} support(s) téléversé(s).`
+ if (failed.length > 0) msg += ` Échec : ${failed.join(', ')}.`
+ const toastType = failed.length > 0 ? 'error' : 'info'
+ redirect(`/sessions/${session_id}?toast=` + encodeURIComponent(msg) + '&toast_type=' + toastType)
 }
 
 export async function validateEntry(formData: FormData) {

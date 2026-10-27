@@ -5,7 +5,7 @@ import { uploadSessionDocument, deleteSessionDocument, downloadSessionDocAction 
  * Supports pédagogiques de la séance : cours, exercices, études de cas, DST, etc.
  * Affiché sur la page de saisie (côté formateur et admin).
  */
-export async function SessionDocuments({ sessionId, readOnly = false }: { sessionId: string; readOnly?: boolean }) {
+export async function SessionDocuments({ sessionId, readOnly = false, hideUpload = false }: { sessionId: string; readOnly?: boolean; hideUpload?: boolean }) {
   const s = createClient()
   const { data: docs } = await s.from('session_documents')
     .select('*').eq('session_id', sessionId).order('uploaded_at', { ascending: false })
@@ -14,12 +14,12 @@ export async function SessionDocuments({ sessionId, readOnly = false }: { sessio
     <div className="card">
       <div className="card-header">
         <div>
-          <div className="card-title">Supports pédagogiques de la séance</div>
+          <div className="card-title">Supports pédagogiques déjà attachés</div>
           <div className="text-xs text-gray-500 mt-0.5">Cours, exercices, études de cas, DST, corrigés — max 20 Mo par fichier.</div>
         </div>
       </div>
       <div className="card-body space-y-3">
-        {!readOnly && (
+        {!readOnly && !hideUpload && (
           <form action={uploadSessionDocument} encType="multipart/form-data" className="bg-brand-light/30 p-3 rounded-md flex flex-wrap items-end gap-2">
             <input type="hidden" name="session_id" value={sessionId} />
             <div className="field mb-0 flex-1 min-w-[220px]">

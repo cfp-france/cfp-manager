@@ -108,7 +108,7 @@ export default async function SessionEditPage({ params }: { params: { id: string
  </div>
  </form>
 
- <form action={submitTimeEntry} className="space-y-5">
+ <form action={submitTimeEntry} encType="multipart/form-data" className="space-y-5">
  <input type="hidden" name="session_id" value={session.id} />
 
  <div className="card">
@@ -138,8 +138,24 @@ export default async function SessionEditPage({ params }: { params: { id: string
  />
  <div className="field"><label>Contenu abordé *</label>
  <textarea name="content_covered" rows={2} defaultValue={existing?.content_covered ?? ''} disabled={disabled} placeholder="Détail des chapitres, sujets, cas pratiques" required></textarea></div>
- <div className="field"><label>Supports pédagogiques utilisés</label>
+ <div className="field"><label>Supports pédagogiques utilisés (description)</label>
  <textarea name="pedagogical_supports" rows={2} defaultValue={existing?.pedagogical_supports ?? ''} disabled={disabled} placeholder="Ex : Diaporama, étude de cas, jeux de rôle, DST"></textarea></div>
+
+ {!disabled && (
+  <div className="field">
+   <label>Fichiers de supports à joindre (optionnel)</label>
+   <input
+    name="pedagogical_files"
+    type="file"
+    multiple
+    accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.mp4"
+    className="w-full text-sm"
+   />
+   <p className="text-[11px] text-gray-500 mt-1">
+    Sélectionnez un ou plusieurs fichiers (max 20 Mo chacun). Ils seront téléversés en même temps que vous soumettez votre saisie — <b>vos informations saisies seront préservées</b>.
+   </p>
+  </div>
+ )}
  <div className="field"><label>Travail effectué / Avancement</label>
  <textarea name="work_done" rows={3} defaultValue={existing?.work_done ?? ''} disabled={disabled} placeholder="Simulations, jeux de rôle, analyse, correction…"></textarea></div>
  <div className="field"><label>Commentaire / Points à revoir</label>
@@ -251,7 +267,7 @@ export default async function SessionEditPage({ params }: { params: { id: string
 
  <div className="mt-5">
  {/* @ts-expect-error async server component */}
- <SessionDocuments sessionId={session.id} readOnly={disabled} />
+ <SessionDocuments sessionId={session.id} readOnly={disabled} hideUpload={true} />
  </div>
  </div>
  )
