@@ -20,18 +20,23 @@ export async function SessionDocuments({ sessionId, readOnly = false, hideUpload
       </div>
       <div className="card-body space-y-3">
         {!readOnly && !hideUpload && (
-          <form action={uploadSessionDocument} encType="multipart/form-data" className="bg-brand-light/30 p-3 rounded-md flex flex-wrap items-end gap-2">
-            <input type="hidden" name="session_id" value={sessionId} />
-            <div className="field mb-0 flex-1 min-w-[220px]">
-              <label className="text-[11px] font-semibold text-navy">Libellé du support (optionnel)</label>
-              <input name="label" placeholder="Ex : Diaporama CEJM — thème 1" className="text-sm border rounded px-2 py-1 w-full" />
+          <div>
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-2 rounded text-[11px] text-amber-900 mb-2">
+              ⚠ <b>Important :</b> si vous avez modifié des champs du formulaire ci-dessus sans l'enregistrer, cliquez d'abord sur « Enregistrer en brouillon » ou « Mettre à jour la saisie » avant de téléverser un fichier. Sinon vos modifications seront perdues.
             </div>
-            <div className="field mb-0 flex-1 min-w-[220px]">
-              <label className="text-[11px] font-semibold text-navy">Fichier</label>
-              <input name="file" type="file" required accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.mp4" className="text-sm" />
-            </div>
-            <button className="btn btn-sm btn-primary">Téléverser</button>
-          </form>
+            <form action={uploadSessionDocument} encType="multipart/form-data" className="bg-brand-light/30 p-3 rounded-md flex flex-wrap items-end gap-2">
+              <input type="hidden" name="session_id" value={sessionId} />
+              <div className="field mb-0 flex-1 min-w-[220px]">
+                <label className="text-[11px] font-semibold text-navy">Libellé du support (optionnel)</label>
+                <input name="label" placeholder="Ex : Diaporama CEJM — thème 1" className="text-sm border rounded px-2 py-1 w-full" />
+              </div>
+              <div className="field mb-0 flex-1 min-w-[220px]">
+                <label className="text-[11px] font-semibold text-navy">Fichier</label>
+                <input name="file" type="file" required accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.webp,.mp4" className="text-sm" />
+              </div>
+              <button className="btn btn-sm btn-primary">Téléverser ce fichier</button>
+            </form>
+          </div>
         )}
 
         {(!docs || docs.length === 0) ? (

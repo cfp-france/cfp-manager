@@ -76,14 +76,29 @@ export default async function SessionEditPage({ params }: { params: { id: string
  <PageHeader title={`Saisir la séance du ${fmtDate(session.session_date)}`}
  subtitle={`${session.mission?.cfa?.name} · ${session.mission?.name} · Prévu ${session.start_time?.slice(0,5)}-${session.end_time?.slice(0,5)} (${fmtHours(Number(session.hours_planned))})`} />
 
- {disabled && <div className="bg-green-50 border-l-4 border-green-500 p-3 rounded mb-4 text-sm">Cette saisie a été validée par l'administration et ne peut plus être modifiée.</div>}
- {existing?.status === 'refused' && <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded mb-4 text-sm">Refusée. Motif : {existing.admin_comment}. Vous pouvez re-soumettre.</div>}
- {existing && !disabled && (
-  <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded mb-4 text-sm">
-   <b>Vos données précédentes sont préremplies ci-dessous</b>
-   {existing.status === 'draft' && ' (brouillon enregistré).'}
-   {existing.status === 'submitted' && ' (soumise, en attente de validation admin).'}
-   {' '}Modifiez uniquement ce qui change puis re-soumettez — rien n'est perdu.
+ {disabled && (
+  <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded mb-4">
+   <div className="flex items-center gap-2 font-semibold text-green-800 text-sm">✓ Saisie VALIDÉE par l'administration</div>
+   <div className="text-xs text-green-700 mt-1">Les champs sont verrouillés. Pour toute correction, contactez l'administration pour qu'elle dévalide d'abord la saisie.</div>
+  </div>
+ )}
+ {existing?.status === 'refused' && (
+  <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded mb-4">
+   <div className="flex items-center gap-2 font-semibold text-red-800 text-sm">✗ Saisie REFUSÉE</div>
+   <div className="text-xs text-red-700 mt-1"><b>Motif admin :</b> {existing.admin_comment ?? '—'}</div>
+   <div className="text-xs text-red-700 mt-1">Corrigez les informations ci-dessous puis re-soumettez pour validation.</div>
+  </div>
+ )}
+ {existing?.status === 'submitted' && (
+  <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded mb-4">
+   <div className="flex items-center gap-2 font-semibold text-amber-800 text-sm">⏳ Saisie SOUMISE, en attente de validation admin</div>
+   <div className="text-xs text-amber-700 mt-1"><b>Vous pouvez encore la modifier</b> tant qu'elle n'est pas validée : ajoutez des infos ou téléversez des fichiers manquants, puis cliquez sur « Mettre à jour la saisie ». Le statut reste « soumise ».</div>
+  </div>
+ )}
+ {existing?.status === 'draft' && (
+  <div className="bg-gray-50 border-l-4 border-gray-400 p-4 rounded mb-4">
+   <div className="flex items-center gap-2 font-semibold text-gray-800 text-sm">📝 Brouillon enregistré</div>
+   <div className="text-xs text-gray-600 mt-1">Vos données précédentes sont préremplies. Finalisez puis soumettez pour validation.</div>
   </div>
  )}
 
@@ -166,7 +181,11 @@ export default async function SessionEditPage({ params }: { params: { id: string
  {!disabled && (
  <div className="flex justify-end gap-2">
  <button name="draft" value="1" className="btn btn-outline">Enregistrer en brouillon</button>
- <button className="btn btn-primary">Soumettre pour validation</button>
+ <button className="btn btn-primary">
+  {existing?.status === 'submitted' ? 'Mettre à jour la saisie (reste soumise)'
+   : existing?.status === 'refused' ? 'Re-soumettre après correction'
+   : 'Soumettre pour validation'}
+ </button>
  </div>
  )}
  </form>
@@ -267,7 +286,7 @@ export default async function SessionEditPage({ params }: { params: { id: string
 
  <div className="mt-5">
  {/* @ts-expect-error async server component */}
- <SessionDocuments sessionId={session.id} readOnly={disabled} hideUpload={true} />
+ <SessionDocuments sessionId={session.id} readOnly={disabled} hideUpload={false} />
  </div>
  </div>
  )

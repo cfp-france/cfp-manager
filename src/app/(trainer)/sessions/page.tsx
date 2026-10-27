@@ -19,13 +19,37 @@ const CFA_PALETTE = [
 ]
 const NEUTRAL = { bg: '#f3f4f6', border: '#9ca3af', text: '#374151' }
 
-export default async function TrainerSessionsPage({ searchParams }: { searchParams: { declared?: string; vw?: string; w?: string; scope?: string } }) {
+export default async function TrainerSessionsPage({ searchParams }: { searchParams: { declared?: string; vw?: string; w?: string; scope?: string; status?: string } }) {
  const { trainer } = await requireTrainer()
  const s = createClient()
- const { data: sessions } = await s.from('mission_sessions')
- .select(`*, mission:missions(name, cfa:cfa(id, name)), cfa:cfa(id, name), time_entries(id, status, hours_actual, actual_start, actual_end)`)
+ const { data: allSessions } = await s.from('mission_sessions')
+ .select(`*, mission:missions(name, cfa:cfa(id, name)), cfa:cfa(id, name), time_entries(id, status, hours_actual, actual_start, actual_end, admin_comment, validated_at)`)
  .eq('trainer_id', trainer?.id ?? '00000000-0000-0000-0000-000000000000')
  .order('session_date', { ascending: false })
+
+ // Compteurs de statut (sur toutes les séances du formateur)
+ const counts = { total: 0, aSaisir: 0, draft: 0, submitted: 0, validated: 0, refused: 0 }
+ for (const se of (allSessions ?? []) as any[]) {
+  counts.total++
+  const te = Array.isArray(se.time_entries) ? se.time_entries[0] : se.time_entries
+  if (!te) counts.aSaisir++
+  else if (te.status === 'draft') counts.draft++
+  else if (te.status === 'submitted') counts.submitted++
+  else if (te.status === 'validated') counts.validated++
+  else if (te.status === 'refused') counts.refused++
+ }
+
+ const statusFilter = searchParams.status || ''
+ const sessions = (allSessions ?? []).filter((se: any) => {
+  if (!statusFilter) return true
+  const te = Array.isArray(se.time_entries) ? se.time_entries[0] : se.time_entries
+  if (statusFilter === 'to_fill') return !te
+  if (statusFilter === 'draft') return te?.status === 'draft'
+  if (statusFilter === 'submitted') return te?.status === 'submitted'
+  if (statusFilter === 'validated') return te?.status === 'validated'
+  if (statusFilter === 'refused') return te?.status === 'refused'
+  return true
+ })
 
  const vw = searchParams.vw === 'grid' ? 'grid' : 'table'
  const scope = searchParams.scope === 'month' ? 'month' : 'week'
@@ -105,11 +129,32 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  </div>
  )}
 
+ {/* Récap des statuts de saisies */}
+ <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+  <StatusCard label="À saisir" count={counts.aSaisir} color="gray"
+   href={`/sessions${statusFilter === 'to_fill' ? '' : '?status=to_fill'}`} active={statusFilter === 'to_fill'} />
+  <StatusCard label="Brouillons" count={counts.draft} color="gray"
+   href={`/sessions${statusFilter === 'draft' ? '' : '?status=draft'}`} active={statusFilter === 'draft'} />
+  <StatusCard label="⏳ Soumises (en attente)" count={counts.submitted} color="amber"
+   href={`/sessions${statusFilter === 'submitted' ? '' : '?status=submitted'}`} active={statusFilter === 'submitted'} />
+  <StatusCard label="✓ Validées" count={counts.validated} color="green"
+   href={`/sessions${statusFilter === 'validated' ? '' : '?status=validated'}`} active={statusFilter === 'validated'} />
+  <StatusCard label="✗ Refusées" count={counts.refused} color="red"
+   href={`/sessions${statusFilter === 'refused' ? '' : '?status=refused'}`} active={statusFilter === 'refused'} />
+ </div>
+
+ {statusFilter && (
+  <div className="mb-3 text-sm">
+   Filtre actif : <b>{statusFilter === 'to_fill' ? 'À saisir' : statusFilter === 'draft' ? 'Brouillons' : statusFilter === 'submitted' ? 'Soumises' : statusFilter === 'validated' ? 'Validées' : 'Refusées'}</b>
+   <Link href="/sessions" className="ml-2 btn btn-sm btn-outline">Tout afficher</Link>
+  </div>
+ )}
+
  <div className="flex items-center gap-2 mb-3">
   <span className="text-[11px] text-gray-500 uppercase font-semibold">Affichage</span>
-  <Link href="/sessions?vw=table" className={`btn btn-sm ${vw === 'table' ? 'btn-primary' : 'btn-outline'}`}>Tableau</Link>
-  <Link href="/sessions?vw=grid&scope=week" className={`btn btn-sm ${vw === 'grid' && scope === 'week' ? 'btn-primary' : 'btn-outline'}`}>Grille (semaine)</Link>
-  <Link href="/sessions?vw=grid&scope=month" className={`btn btn-sm ${vw === 'grid' && scope === 'month' ? 'btn-primary' : 'btn-outline'}`}>Grille (mois)</Link>
+  <Link href={`/sessions?vw=table${statusFilter ? `&status=${statusFilter}` : ''}`} className={`btn btn-sm ${vw === 'table' ? 'btn-primary' : 'btn-outline'}`}>Tableau</Link>
+  <Link href={`/sessions?vw=grid&scope=week${statusFilter ? `&status=${statusFilter}` : ''}`} className={`btn btn-sm ${vw === 'grid' && scope === 'week' ? 'btn-primary' : 'btn-outline'}`}>Grille (semaine)</Link>
+  <Link href={`/sessions?vw=grid&scope=month${statusFilter ? `&status=${statusFilter}` : ''}`} className={`btn btn-sm ${vw === 'grid' && scope === 'month' ? 'btn-primary' : 'btn-outline'}`}>Grille (mois)</Link>
  </div>
 
  {vw === 'grid' ? (
@@ -186,13 +231,28 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  <td>{se.start_time?.slice(0,5)}-{se.end_time?.slice(0,5)}</td>
  <td>{fmtHours(Number(se.hours_planned))}</td>
  <td>
- {!te && <span className="status status-pending">À saisir</span>}
- {te?.status === 'draft' && <span className="status status-pending">Brouillon</span>}
- {te?.status === 'submitted' && <span className="status status-pending">Soumise</span>}
- {te?.status === 'validated' && <span className="status status-validated">Validée · {fmtHours(Number(te.hours_actual))}</span>}
- {te?.status === 'refused' && <span className="status status-refused">Refusée</span>}
+ {!te && <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-gray-100 text-gray-700">À saisir</span>}
+ {te?.status === 'draft' && <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-gray-100 text-gray-700">📝 Brouillon</span>}
+ {te?.status === 'submitted' && (
+  <div>
+   <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-amber-100 text-amber-800">⏳ Soumise</span>
+   <div className="text-[10px] text-gray-500 mt-0.5">en attente admin</div>
+  </div>
+ )}
+ {te?.status === 'validated' && (
+  <div>
+   <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-green-100 text-green-800">✓ Validée</span>
+   <div className="text-[10px] text-gray-500 mt-0.5">{fmtHours(Number(te.hours_actual))}</div>
+  </div>
+ )}
+ {te?.status === 'refused' && (
+  <div>
+   <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-red-100 text-red-800">✗ Refusée</span>
+   {te.admin_comment && <div className="text-[10px] text-red-700 mt-0.5 italic">Motif : {te.admin_comment}</div>}
+  </div>
+ )}
  </td>
- <td><Link href={`/sessions/${se.id}`} className="btn btn-sm btn-outline">{te?.status === 'validated' ? 'Voir' : (te?.status === 'submitted' || te?.status === 'refused' ? 'Voir' : 'Saisir')}</Link></td>
+ <td><Link href={`/sessions/${se.id}`} className="btn btn-sm btn-outline">{!te ? 'Saisir' : te.status === 'validated' ? 'Voir' : 'Voir / Modifier'}</Link></td>
  </tr>
  )
  })}
@@ -202,5 +262,20 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  </div>
  )}
  </div>
+ )
+}
+
+function StatusCard({ label, count, color, href, active }: { label: string; count: number; color: 'gray' | 'amber' | 'green' | 'red'; href: string; active: boolean }) {
+ const colors = {
+  gray: 'bg-gray-50 border-gray-300 text-gray-700',
+  amber: 'bg-amber-50 border-amber-500 text-amber-800',
+  green: 'bg-green-50 border-green-500 text-green-800',
+  red: 'bg-red-50 border-red-500 text-red-800',
+ }
+ return (
+  <Link href={href} className={`card p-3 border-l-4 ${colors[color]} ${active ? 'ring-2 ring-offset-1 ring-navy' : 'hover:ring-1 hover:ring-navy'}`}>
+   <div className="text-[11px] font-semibold uppercase tracking-wider">{label}</div>
+   <div className="text-2xl font-bold mt-1">{count}</div>
+  </Link>
  )
 }
