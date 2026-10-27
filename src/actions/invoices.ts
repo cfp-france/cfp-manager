@@ -174,7 +174,7 @@ export async function generateCfaInvoice(formData: FormData) {
  .is('cfa_invoice_id', null)
 
  // Filtrer côté app : CFA correspondant + séance avec un formateur + pas en attente de remplacement
- const filtered = (entries ?? []).filter((e: any) => {
+ const preFiltered = (entries ?? []).filter((e: any) => {
   const cfaMatch = e.session?.cfa_id === cfa_id || e.session?.mission?.cfa_id === cfa_id
   if (!cfaMatch) return false
   // Pas de formateur sur la saisie elle-même → non facturable
@@ -185,6 +185,18 @@ export async function generateCfaInvoice(formData: FormData) {
   if (e.session && e.session.trainer_id === null) return false
   return true
  })
+
+ // Garde-fou anti-doublons : au cas où plusieurs saisies validées pointent vers la même
+ // (date de travail, trainer, horaires) à cause d'un bug historique → on garde la plus récente.
+ const seenKeys = new Map<string, any>()
+ for (const e of preFiltered) {
+  const se: any = e.session
+  const key = `${e.work_date}|${e.trainer_id}|${se?.start_time ?? ''}|${se?.end_time ?? ''}`
+  const existing = seenKeys.get(key)
+  if (!existing || (e.id > existing.id)) seenKeys.set(key, e)
+ }
+ const filtered = Array.from(seenKeys.values())
+ const dedupSkipped = preFiltered.length - filtered.length
  if (filtered.length === 0) redirect(`/invoicing?empty=1&cfa=${cfa_id}&year=${year}&month=${month}`)
 
  let totalHours = 0, totalHt = 0
