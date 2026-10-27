@@ -56,7 +56,7 @@ export async function generateMyMonthlyInvoice(formData: FormData) {
 
  // Récupérer les heures validées sur la période, non encore facturées
  const { data: entries } = await s.from('time_entries')
- .select(`id, work_date, hours_actual,
+ .select(`id, work_date, hours_actual, actual_start, actual_end,
  session:mission_sessions(mission_id, cfa_id,
  mission:missions(name, trainer_hourly_rate, cfa:cfa(name)),
  cfa:cfa(name))`)
@@ -70,10 +70,20 @@ export async function generateMyMonthlyInvoice(formData: FormData) {
  redirect('/invoices?empty=1')
  }
 
+ // Garde-fou anti-doublons : dédupliquer par (work_date + horaires) — on garde la plus récente.
+ // Cela évite qu'une facture formateur compte 2 fois la même séance si des doublons historiques existaient.
+ const seenKeys = new Map<string, any>()
+ for (const e of entries) {
+  const key = `${e.work_date}|${(e as any).actual_start ?? ''}|${(e as any).actual_end ?? ''}|${Number((e as any).hours_actual ?? 0)}`
+  const existing = seenKeys.get(key)
+  if (!existing || (e as any).id > existing.id) seenKeys.set(key, e)
+ }
+ const dedupedEntries = Array.from(seenKeys.values())
+
  // Totaux
  let totalHours = 0
  let totalHt = 0
- const lines = entries.map((e: any) => {
+ const lines = dedupedEntries.map((e: any) => {
  const h = Number(e.hours_actual ?? 0)
  // Priorité : tarif mission (si > 0) → tarif par défaut du formateur → 0
  const rate = Number(e.session?.mission?.trainer_hourly_rate) || Number(trainer.hourly_rate_default) || 0
@@ -119,7 +129,8 @@ export async function generateMyMonthlyInvoice(formData: FormData) {
  // Lignes
  await s.from('trainer_invoice_lines').insert(lines.map(l => ({ ...l, invoice_id: invoice.id })))
 
- // Marquer les time_entries comme facturées
+ // Marquer les time_entries comme facturées — on marque TOUTES les entries (y compris les doublons
+ // dédupliqués) pour éviter qu'elles ressortent lors de la prochaine facturation.
  await s.from('time_entries').update({ trainer_invoice_id: invoice.id })
  .in('id', entries.map((e: any) => e.id))
 
