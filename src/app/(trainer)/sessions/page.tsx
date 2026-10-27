@@ -2,6 +2,9 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtHours, requireTrainer } from '@/lib/utils'
 import { WeekGrid, mondayOfWeek, isoDate, addDays } from '@/components/WeekGrid'
+import { deleteMyEntry } from '@/actions/entries'
+import { requestDeletion } from '@/actions/deletion-requests'
+import { ConfirmButton } from '@/components/ConfirmButton'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -212,7 +215,7 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  ) : (
  <div className="card">
  <table className="w-full">
- <thead><tr><th>Date</th><th>Mission / CFA</th><th>Horaires</th><th>Prévu</th><th>Statut saisie</th><th>Action</th></tr></thead>
+ <thead><tr><th>Date</th><th>Mission / CFA</th><th>Horaires</th><th>Prévu</th><th>Statut saisie</th><th>Action</th><th>Supprimer</th></tr></thead>
  <tbody>
  {sessions?.map((se: any) => {
  const te = se.time_entries?.[0]
@@ -253,10 +256,52 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  )}
  </td>
  <td><Link href={`/sessions/${se.id}`} className="btn btn-sm btn-outline">{!te ? 'Saisir' : te.status === 'validated' ? 'Voir' : 'Voir / Modifier'}</Link></td>
+ <td>
+  {/* Pas de suppression possible sur une saisie validée */}
+  {te?.status === 'validated' ? (
+   <span className="text-[10px] text-gray-400 italic" title="Les séances validées ne peuvent être supprimées que par l'admin après dévalidation">Verrouillée</span>
+  ) : isSelfDeclared ? (
+   // Séance auto-déclarée : suppression immédiate (c'est le formateur qui l'a créée)
+   <form action={deleteMyEntry}>
+    <input type="hidden" name="session_id" value={se.id} />
+    <ConfirmButton
+     className="btn btn-sm btn-danger"
+     message={`Supprimer définitivement la séance auto-déclarée du ${fmtDate(se.session_date)} ?\n\nCette action est irréversible. La séance et sa saisie (s'il y en a une) seront supprimées.`}
+     title="Supprimer cette séance auto-déclarée"
+    >Supprimer</ConfirmButton>
+   </form>
+  ) : te ? (
+   // Séance planifiée + brouillon/soumise/refusée → le formateur peut effacer SA SAISIE (la séance reste au planning)
+   <form action={deleteMyEntry}>
+    <input type="hidden" name="session_id" value={se.id} />
+    <ConfirmButton
+     className="btn btn-sm btn-outline"
+     message={`Effacer votre saisie pour la séance du ${fmtDate(se.session_date)} ?\n\nLa séance restera dans votre planning (programmée par l'admin), vous pourrez la saisir à nouveau. Seul votre contenu actuel sera effacé.`}
+     title="Effacer uniquement ma saisie, la séance reste au planning"
+    >Effacer saisie</ConfirmButton>
+   </form>
+  ) : (
+   // Séance planifiée sans saisie → demander la suppression à l'admin
+   <details className="inline-block relative">
+    <summary className="btn btn-sm btn-outline cursor-pointer list-none" title="Demander à l'admin de retirer cette séance du planning">Demander</summary>
+    <form action={requestDeletion} className="absolute right-0 bg-white border rounded shadow-xl p-2 mt-1 z-10 w-[260px]">
+     <input type="hidden" name="target_type" value="session" />
+     <input type="hidden" name="target_id" value={se.id} />
+     <input type="hidden" name="return_to" value="/sessions" />
+     <div className="text-[11px] text-gray-600 mb-1">
+      Demandez à l'administrateur de retirer cette séance du planning (doublon, erreur…).
+     </div>
+     <textarea name="reason" required rows={2} placeholder="Motif (ex : doublon, j'ai été absent...)"
+      className="w-full text-xs border rounded px-1 py-1" />
+     <button className="btn btn-sm btn-danger w-full mt-1">Envoyer à l'admin</button>
+    </form>
+   </details>
+  )}
+ </td>
  </tr>
  )
  })}
- {(!sessions || sessions.length === 0) && <tr><td colSpan={6} className="text-center text-gray-500 py-8">Aucune séance. Cliquez sur « + Déclarer une séance » si vous avez fait une intervention hors planning.</td></tr>}
+ {(!sessions || sessions.length === 0) && <tr><td colSpan={7} className="text-center text-gray-500 py-8">Aucune séance. Cliquez sur « + Déclarer une séance » si vous avez fait une intervention hors planning.</td></tr>}
  </tbody>
  </table>
  </div>
