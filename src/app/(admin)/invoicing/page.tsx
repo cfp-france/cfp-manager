@@ -1,16 +1,21 @@
 import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
-import { generateCfaInvoice, markInvoicePaid, cancelInvoice } from '@/actions/invoices'
+import { generateCfaInvoice, markInvoicePaid, cancelInvoice, recordExternalTrainerInvoice } from '@/actions/invoices'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 const MONTHS = ['Janv.','Févr.','Mars','Avr.','Mai','Juin','Juil.','Août','Sept.','Oct.','Nov.','Déc.']
 
-export default async function InvoicingDashboard({ searchParams }: { searchParams: { empty?: string; error?: string } }) {
+export default async function InvoicingDashboard({ searchParams }: { searchParams: { empty?: string; error?: string; toast?: string } }) {
  const s = createClient()
+ const now = new Date()
+ const curY = now.getUTCFullYear()
+ const curM = now.getUTCMonth() + 1
+ const prevM = curM === 1 ? 12 : curM - 1
+ const prevY = curM === 1 ? curY - 1 : curY
 
- const [{ data: trainerInvoices }, { data: cfaInvoices }, { data: cfas }] = await Promise.all([
+ const [{ data: trainerInvoices }, { data: cfaInvoices }, { data: cfas }, { data: trainers }] = await Promise.all([
  s.from('trainer_invoices')
  .select('*, trainer:trainers(first_name, last_name, company_name)')
  .order('period_year', { ascending: false }).order('period_month', { ascending: false }).limit(100),
@@ -18,6 +23,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  .select('*, cfa:cfa(name)')
  .order('period_year', { ascending: false }).order('period_month', { ascending: false }).limit(100),
  s.from('cfa').select('id, name').is('archived_at', null).order('name'),
+ s.from('trainers').select('id, first_name, last_name, company_name').eq('active', true).is('archived_at', null).order('last_name'),
  ])
 
  // Pour l'assistant "Générer facture CFA" : lister les (CFA, mois) avec heures validées non facturées
@@ -58,6 +64,16 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  Aucune heure validée disponible pour cette période (ou déjà facturée).
  </div>
  )}
+ {searchParams.error && (
+ <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded mb-4 text-sm">
+ Erreur : {searchParams.error}
+ </div>
+ )}
+ {searchParams.toast && (
+ <div className="bg-green-50 border-l-4 border-green-500 p-3 rounded mb-4 text-sm">
+ ✓ {searchParams.toast}
+ </div>
+ )}
 
  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
  <Kpi label="Dû aux formateurs" value={fmtEuro(trPending)} tone="amber" />
@@ -90,6 +106,79 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  </div>
  )}
 
+ {/* Enregistrer une facture externe (reçue hors plateforme) */}
+ <details className="card mb-5">
+ <summary className="card-header cursor-pointer select-none">
+ <div>
+ <div className="card-title">➕ Enregistrer une facture externe reçue d'un formateur</div>
+ <div className="text-xs text-gray-500 mt-0.5">
+ Pour les formateurs qui envoient leur facture en papier/mail sans passer par la plateforme.
+ </div>
+ </div>
+ </summary>
+ <div className="card-body">
+ <form action={recordExternalTrainerInvoice} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Formateur *</label>
+ <select name="trainer_id" required className="text-sm border rounded px-2 py-1 w-full">
+ <option value="">— Sélectionner —</option>
+ {(trainers ?? []).map((t: any) => (
+ <option key={t.id} value={t.id}>
+ {t.company_name || `${t.first_name ?? ''} ${t.last_name ?? ''}`.trim()}
+ </option>
+ ))}
+ </select>
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Mois concerné *</label>
+ <select name="month" required defaultValue={String(prevM)} className="text-sm border rounded px-2 py-1 w-full">
+ {MONTHS.map((m, i) => (<option key={i} value={i + 1}>{m}</option>))}
+ </select>
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Année *</label>
+ <select name="year" required defaultValue={String(prevY)} className="text-sm border rounded px-2 py-1 w-full">
+ {[curY - 1, curY, curY + 1].map(y => (<option key={y} value={y}>{y}</option>))}
+ </select>
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Montant HT (€) *</label>
+ <input name="amount_ht" type="number" step="0.01" min="0" required
+ className="text-sm border rounded px-2 py-1 w-full" placeholder="0.00" />
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Taux TVA (%)</label>
+ <select name="vat_rate" defaultValue="0" className="text-sm border rounded px-2 py-1 w-full">
+ <option value="0">0% (franchise auto-entrepreneur)</option>
+ <option value="20">20%</option>
+ <option value="10">10%</option>
+ <option value="5.5">5,5%</option>
+ </select>
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">N° de facture externe</label>
+ <input name="external_number" type="text"
+ className="text-sm border rounded px-2 py-1 w-full"
+ placeholder="Laisser vide = numéro auto" />
+ </div>
+ <div className="md:col-span-2 lg:col-span-3 bg-brand-light/30 p-3 rounded">
+ <label className="flex items-center gap-2 text-sm cursor-pointer">
+ <input type="checkbox" name="already_paid" />
+ <span>Facture <b>déjà payée</b> (saisir aussi la référence ci-dessous)</span>
+ </label>
+ <div className="field mb-0 mt-2">
+ <label className="text-[11px] font-semibold text-navy">Référence du règlement (si déjà payée)</label>
+ <input name="payment_reference" type="text" placeholder="N° virement / chèque / date"
+ className="text-sm border rounded px-2 py-1 w-full" />
+ </div>
+ </div>
+ <div className="md:col-span-2 lg:col-span-3 flex justify-end">
+ <button className="btn btn-primary">Enregistrer la facture externe</button>
+ </div>
+ </form>
+ </div>
+ </details>
+
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
  {/* Factures formateurs (reçues) */}
  <div className="card">
@@ -118,7 +207,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  <form action={markInvoicePaid} className="flex gap-1">
  <input type="hidden" name="id" value={inv.id} />
  <input type="hidden" name="type" value="trainer" />
- <button className="btn btn-sm btn-success" title="Marquer payée"></button>
+ <button className="btn btn-sm btn-success" title="Marquer comme payée">✓ Payée</button>
  </form>
  )}
  </td>
@@ -157,7 +246,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  <form action={markInvoicePaid} className="flex gap-1">
  <input type="hidden" name="id" value={inv.id} />
  <input type="hidden" name="type" value="cfa" />
- <button className="btn btn-sm btn-success" title="Marquer payée (encaissée)"></button>
+ <button className="btn btn-sm btn-success" title="Marquer comme encaissée">✓ Encaissée</button>
  </form>
  )}
  </td>

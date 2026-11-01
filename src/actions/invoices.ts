@@ -257,7 +257,65 @@ export async function generateCfaInvoice(formData: FormData) {
  redirect(`/invoicing/cfa/${invoice.id}`)
 }
 
-// Marquage statut (admin) 
+// Facture externe reçue d'un formateur (hors plateforme) ———
+// Permet à l'admin d'enregistrer une facture reçue en papier/mail d'un formateur
+// qui n'est pas passé par la génération automatique.
+export async function recordExternalTrainerInvoice(formData: FormData) {
+ const s = createClient()
+ const { data: { user } } = await s.auth.getUser()
+ if (!user) redirect('/login')
+
+ const trainer_id = formData.get('trainer_id') as string
+ const year = Number(formData.get('year'))
+ const month = Number(formData.get('month'))
+ const amount_ht = Number(formData.get('amount_ht'))
+ const vat_rate = Number(formData.get('vat_rate') ?? 0)
+ const external_number = (formData.get('external_number') as string) || null
+ const already_paid = formData.get('already_paid') === 'on'
+ const payment_reference = (formData.get('payment_reference') as string) || null
+
+ if (!trainer_id || !year || !month || !amount_ht) {
+  return redirect('/invoicing?error=' + encodeURIComponent('Champs obligatoires manquants.'))
+ }
+
+ // Pas 2 factures identiques pour le même formateur / mois
+ const { data: existing } = await s.from('trainer_invoices')
+  .select('id').eq('trainer_id', trainer_id).eq('period_year', year).eq('period_month', month).maybeSingle()
+ if (existing) {
+  return redirect('/invoicing?error=' + encodeURIComponent('Une facture existe déjà pour ce formateur et ce mois.'))
+ }
+
+ const vatAmount = Math.round(amount_ht * vat_rate) / 100
+ const totalTtc = amount_ht + vatAmount
+ const invoiceNumber = external_number || await nextTrainerInvoiceNumber(s, year)
+
+ const { data: invoice, error } = await s.from('trainer_invoices').insert({
+  trainer_id,
+  period_year: year,
+  period_month: month,
+  invoice_number: invoiceNumber,
+  total_hours: 0,
+  amount_ht,
+  vat_rate,
+  amount_vat: vatAmount,
+  amount_ttc: totalTtc,
+  status: already_paid ? 'paid' : 'sent',
+  paid_at: already_paid ? new Date().toISOString() : null,
+  paid_by: already_paid ? user.id : null,
+  payment_reference: already_paid ? payment_reference : null,
+  external_source: true,
+  created_by: user.id,
+ }).select('id').single()
+
+ if (error || !invoice) {
+  return redirect('/invoicing?error=' + encodeURIComponent(error?.message ?? 'Erreur création facture externe'))
+ }
+
+ revalidatePath('/invoicing')
+ redirect('/invoicing?toast=' + encodeURIComponent('Facture externe enregistrée.'))
+}
+
+// Marquage statut (admin)
 
 export async function markInvoicePaid(formData: FormData) {
  const s = createClient()

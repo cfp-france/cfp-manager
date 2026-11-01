@@ -57,6 +57,24 @@ export default async function TrainerInvoicesPage({ searchParams }: { searchPara
  </div>
  )}
 
+ {/* Aucune heure validée → message explicite pour éviter l'impression que "le bouton ne marche pas" */}
+ {toInvoice.length === 0 && (
+ <div className="card mb-5 border-l-4 border-amber-500">
+ <div className="card-body">
+ <div className="font-semibold text-sm mb-1">Aucun mois disponible à facturer pour le moment</div>
+ <div className="text-xs text-gray-700 leading-relaxed">
+ Pour pouvoir générer une facture, vous devez d'abord :
+ <ol className="list-decimal ml-5 mt-1 space-y-0.5">
+ <li>Saisir vos séances dans « Mes séances » (statut <b>Soumise</b>).</li>
+ <li>Attendre que l'administration <b>valide</b> vos séances.</li>
+ </ol>
+ Une fois des séances validées, un bouton <b>« Générer la facture »</b> apparaîtra ici pour chaque mois concerné.
+ Si vous pensez que vos heures ont déjà été validées, contactez l'administration pour vérifier.
+ </div>
+ </div>
+ </div>
+ )}
+
  {/* Factures à générer */}
  {toInvoice.length > 0 && (
  <div className="card mb-5">
@@ -108,7 +126,7 @@ export default async function TrainerInvoicesPage({ searchParams }: { searchPara
  {inv.status === 'draft' && (
  <form action={deleteMyDraftInvoice}>
  <input type="hidden" name="id" value={inv.id} />
- <button className="btn btn-sm btn-danger" title="Supprimer le brouillon"></button>
+ <button className="btn btn-sm btn-danger" title="Supprimer le brouillon">Supprimer</button>
  </form>
  )}
  </td>
