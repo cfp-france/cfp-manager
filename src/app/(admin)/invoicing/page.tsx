@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
 import { generateCfaInvoice, markInvoicePaid, cancelInvoice, recordExternalTrainerInvoice } from '@/actions/invoices'
+import { closeTrainerMonthAsAdmin, markMonthClosurePaid, reopenMonthClosure } from '@/actions/month-closures'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -15,7 +16,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  const prevM = curM === 1 ? 12 : curM - 1
  const prevY = curM === 1 ? curY - 1 : curY
 
- const [{ data: trainerInvoices }, { data: cfaInvoices }, { data: cfas }, { data: trainers }] = await Promise.all([
+ const [{ data: trainerInvoices }, { data: cfaInvoices }, { data: cfas }, { data: trainers }, { data: closures }, { data: allEntries }] = await Promise.all([
  s.from('trainer_invoices')
  .select('*, trainer:trainers(first_name, last_name, company_name)')
  .order('period_year', { ascending: false }).order('period_month', { ascending: false }).limit(100),
@@ -24,7 +25,36 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  .order('period_year', { ascending: false }).order('period_month', { ascending: false }).limit(100),
  s.from('cfa').select('id, name').is('archived_at', null).order('name'),
  s.from('trainers').select('id, first_name, last_name, company_name').eq('active', true).is('archived_at', null).order('last_name'),
+ s.from('trainer_month_closures')
+ .select('*, trainer:trainers(id, first_name, last_name, company_name)')
+ .order('period_year', { ascending: false }).order('period_month', { ascending: false }).limit(200),
+ s.from('time_entries')
+ .select('work_date, hours_actual, trainer_id, status, trainer:trainers(id, first_name, last_name, company_name), session:mission_sessions(mission:missions(trainer_hourly_rate))')
+ .in('status', ['submitted', 'validated']),
  ])
+
+ // Mois travaillés par formateur, non encore clôturés — pour que l'admin puisse clôturer à leur place
+ const closureKeys = new Set((closures ?? []).map((c: any) => `${c.trainer_id}-${c.period_year}-${c.period_month}`))
+ const workedMap: Record<string, { trainerId: string; trainerName: string; year: number; month: number; hours: number; amount: number }> = {}
+ for (const e of allEntries ?? []) {
+  const d = new Date((e as any).work_date)
+  const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1
+  const tid = (e as any).trainer_id
+  if (!tid) continue
+  const key = `${tid}-${y}-${m}`
+  if (closureKeys.has(key)) continue
+  const t = (e as any).trainer
+  const name = t?.company_name || `${t?.first_name ?? ''} ${t?.last_name ?? ''}`.trim()
+  const h = Number((e as any).hours_actual ?? 0)
+  const rate = Number((e as any).session?.mission?.trainer_hourly_rate ?? 0)
+  if (!workedMap[key]) workedMap[key] = { trainerId: tid, trainerName: name, year: y, month: m, hours: 0, amount: 0 }
+  workedMap[key].hours += h
+  workedMap[key].amount += h * rate
+ }
+ // Exclure le mois en cours (le formateur n'est pas censé l'avoir fini)
+ const notYetClosed = Object.values(workedMap)
+  .filter(w => !(w.year === curY && w.month === curM))
+  .sort((a, b) => (b.year - a.year) || (b.month - a.month) || a.trainerName.localeCompare(b.trainerName))
 
  // Pour l'assistant "Générer facture CFA" : lister les (CFA, mois) avec heures validées non facturées
  const { data: notYet } = await s.from('time_entries')
@@ -51,7 +81,9 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
 
  // Totaux
  const trPaid = (trainerInvoices ?? []).filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
+ + (closures ?? []).filter((c: any) => c.paid_at).reduce((s: number, c: any) => s + Number(c.total_amount_ht), 0)
  const trPending = (trainerInvoices ?? []).filter((i: any) => i.status === 'sent' || i.status === 'draft').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
+ + (closures ?? []).filter((c: any) => !c.paid_at).reduce((s: number, c: any) => s + Number(c.total_amount_ht), 0)
  const cfaPaid = (cfaInvoices ?? []).filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
  const cfaPending = (cfaInvoices ?? []).filter((i: any) => i.status === 'sent' || i.status === 'draft').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
 
@@ -81,6 +113,89 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  <Kpi label="En attente CFA" value={fmtEuro(cfaPending)} tone="amber" />
  <Kpi label="Encaissé CFA" value={fmtEuro(cfaPaid)} tone="green" />
  </div>
+
+ {/* Clôtures mensuelles formateurs */}
+ {(closures && closures.length > 0) && (
+ <div className="card mb-5">
+ <div className="card-header">
+ <div>
+ <div className="card-title">📅 Clôtures mensuelles des formateurs</div>
+ <div className="text-xs text-gray-500 mt-0.5">
+ Mois clôturés par les formateurs (ou par vous à leur place) — à régler.
+ </div>
+ </div>
+ </div>
+ <div className="card-body p-0">
+ <table className="w-full">
+ <thead><tr><th>Formateur</th><th>Période</th><th>Heures</th><th>Montant HT</th><th>Clôturé</th><th>Statut</th><th></th></tr></thead>
+ <tbody>
+ {(closures ?? []).map((c: any) => (
+ <tr key={c.id} className={c.paid_at ? '' : 'bg-amber-50'}>
+ <td className="text-xs">{c.trainer?.company_name || `${c.trainer?.first_name ?? ''} ${c.trainer?.last_name ?? ''}`}</td>
+ <td className="text-xs">{MONTHS[c.period_month - 1]} {c.period_year}</td>
+ <td className="text-xs">{fmtHours(Number(c.total_hours))}</td>
+ <td className="font-semibold text-sm">{fmtEuro(Number(c.total_amount_ht))}</td>
+ <td className="text-[11px] text-gray-600">
+ {new Date(c.closed_at).toLocaleDateString('fr-FR')}
+ {c.closed_by_admin && <span className="ml-1 text-amber-700">(admin)</span>}
+ </td>
+ <td>
+ {c.paid_at ? (
+ <span className="status status-validated">💰 Payé</span>
+ ) : (
+ <span className="status status-pending">À régler</span>
+ )}
+ </td>
+ <td className="flex gap-1">
+ {!c.paid_at && (
+ <form action={markMonthClosurePaid} className="flex gap-1 items-center">
+ <input type="hidden" name="id" value={c.id} />
+ <input name="payment_reference" type="text" placeholder="Réf. virement"
+ className="text-xs border rounded px-1 py-0.5 w-24" />
+ <button className="btn btn-sm btn-success">✓ Payé</button>
+ </form>
+ )}
+ <form action={reopenMonthClosure}>
+ <input type="hidden" name="id" value={c.id} />
+ <button className="btn btn-sm btn-outline" title="Rouvrir ce mois (annule la clôture)">Rouvrir</button>
+ </form>
+ </td>
+ </tr>
+ ))}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ )}
+
+ {/* Mois travaillés non encore clôturés — l'admin peut clôturer à la place du formateur */}
+ {notYetClosed.length > 0 && (
+ <details className="card mb-5">
+ <summary className="card-header cursor-pointer select-none">
+ <div>
+ <div className="card-title">⏳ Mois travaillés non encore clôturés par les formateurs ({notYetClosed.length})</div>
+ <div className="text-xs text-gray-500 mt-0.5">
+ Vous pouvez clôturer un mois à la place d'un formateur s'il tarde à le faire.
+ </div>
+ </div>
+ </summary>
+ <div className="card-body space-y-2">
+ {notYetClosed.map(w => (
+ <form key={`${w.trainerId}-${w.year}-${w.month}`} action={closeTrainerMonthAsAdmin}
+ className="flex items-center justify-between gap-3 p-2 bg-brand-light/30 rounded">
+ <input type="hidden" name="trainer_id" value={w.trainerId} />
+ <input type="hidden" name="year" value={w.year} />
+ <input type="hidden" name="month" value={w.month} />
+ <div className="flex-1">
+ <div className="font-semibold text-sm">{w.trainerName} — {MONTHS[w.month - 1]} {w.year}</div>
+ <div className="text-xs text-gray-600">{fmtHours(w.hours)} saisies · ~{fmtEuro(w.amount)} HT</div>
+ </div>
+ <button className="btn btn-sm btn-outline">Clôturer à sa place</button>
+ </form>
+ ))}
+ </div>
+ </details>
+ )}
 
  {/* Factures CFA à générer */}
  {toGenerate.length > 0 && (
