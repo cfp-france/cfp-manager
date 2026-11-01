@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
 import { closeTrainerMonthAsAdmin } from '@/actions/month-closures'
-import { updateMissionRates } from '@/actions/missions'
+import { updateMissionRates, updateSessionRates } from '@/actions/missions'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
@@ -31,7 +31,8 @@ export default async function CloseMonthReview({ params, searchParams }: { param
     s.from('time_entries')
       .select(`id, session_id, work_date, actual_start, actual_end, hours_actual, status,
                content_covered, work_done, points_to_review,
-               session:mission_sessions(mission_id, mission:missions(id, name, trainer_hourly_rate, cfa_hourly_rate, cfa:cfa(name)))`)
+               session:mission_sessions(id, mission_id, trainer_hourly_rate_override, cfa_hourly_rate_override,
+                 mission:missions(id, name, trainer_hourly_rate, cfa_hourly_rate, cfa:cfa(name)))`)
       .eq('trainer_id', trainerId)
       .gte('work_date', from)
       .lte('work_date', to)
@@ -55,10 +56,12 @@ export default async function CloseMonthReview({ params, searchParams }: { param
     refused: { count: 0, hours: 0, amount: 0 },
   }
   let caTotal = 0
+  const effTrRate = (e: any) => Number(e.session?.trainer_hourly_rate_override ?? e.session?.mission?.trainer_hourly_rate) || defaultRate
+  const effCfaRate = (e: any) => Number(e.session?.cfa_hourly_rate_override ?? e.session?.mission?.cfa_hourly_rate ?? 0)
   for (const e of all) {
     const h = Number((e as any).hours_actual ?? 0)
-    const trRate = Number((e as any).session?.mission?.trainer_hourly_rate) || defaultRate
-    const cfaRate = Number((e as any).session?.mission?.cfa_hourly_rate ?? 0)
+    const trRate = effTrRate(e)
+    const cfaRate = effCfaRate(e)
     const st = (e as any).status
     if (byStatus[st]) {
       byStatus[st].count += 1
@@ -149,9 +152,12 @@ export default async function CloseMonthReview({ params, searchParams }: { param
             <tbody>
               {all.map((e: any) => {
                 const h = Number(e.hours_actual ?? 0)
-                const trRate = Number(e.session?.mission?.trainer_hourly_rate) || defaultRate
-                const cfaRate = Number(e.session?.mission?.cfa_hourly_rate ?? 0)
+                const trRate = effTrRate(e)
+                const cfaRate = effCfaRate(e)
+                const sessionId = e.session?.id ?? e.session_id
                 const missionId = e.session?.mission?.id ?? e.session?.mission_id
+                const hasTrOverride = e.session?.trainer_hourly_rate_override != null
+                const hasCfaOverride = e.session?.cfa_hourly_rate_override != null
                 const amt = h * trRate
                 const ca = h * cfaRate
                 return (
@@ -159,29 +165,44 @@ export default async function CloseMonthReview({ params, searchParams }: { param
                     <td className="text-xs">{fmtDate(e.work_date)}</td>
                     <td className="text-xs font-mono">{(e.actual_start ?? '').slice(0,5)}–{(e.actual_end ?? '').slice(0,5)}</td>
                     <td className="text-xs">
-                      <div className="font-semibold">{e.session?.mission?.name ?? '—'}</div>
+                      <div className="font-semibold">{e.session?.mission?.name ?? <span className="italic text-gray-500">Séance hors mission</span>}</div>
                       <div className="text-gray-500">{e.session?.mission?.cfa?.name ?? ''}</div>
                     </td>
                     <td className="text-xs">{fmtHours(h)}</td>
-                    <td className="text-xs">{fmtEuro(trRate)}/h</td>
+                    <td>
+                      <details className="inline-block">
+                        <summary className="cursor-pointer text-xs underline decoration-dotted">
+                          {trRate > 0 ? `${fmtEuro(trRate)}/h` : <span className="text-red-600 font-semibold">⚠ à saisir</span>}
+                          {hasTrOverride && <span className="ml-1 text-[9px] text-amber-600" title="Tarif spécifique à cette séance">●</span>}
+                        </summary>
+                        <form action={updateSessionRates} className="mt-1 flex gap-1 items-center bg-white border rounded p-1 shadow-sm">
+                          <input type="hidden" name="session_id" value={sessionId} />
+                          <input type="hidden" name="return_to" value={returnTo} />
+                          <input name="trainer_hourly_rate_override" type="number" step="0.01" min="0"
+                            defaultValue={hasTrOverride ? e.session.trainer_hourly_rate_override : (trRate || '')}
+                            placeholder="€/h" className="text-xs border rounded px-1 py-0.5 w-16" />
+                          <button className="btn btn-sm btn-primary text-xs px-1 py-0.5">✓</button>
+                        </form>
+                      </details>
+                    </td>
                     <td className="font-semibold text-sm">{fmtEuro(amt)}</td>
                     <td>
-                      {missionId ? (
-                        <details className="inline-block">
-                          <summary className="cursor-pointer text-xs underline decoration-dotted">
-                            {fmtEuro(cfaRate)}/h
-                          </summary>
-                          <form action={updateMissionRates} className="mt-1 flex gap-1 items-center bg-white border rounded p-1 shadow-sm">
-                            <input type="hidden" name="mission_id" value={missionId} />
-                            <input type="hidden" name="return_to" value={returnTo} />
-                            <input name="cfa_hourly_rate" type="number" step="0.01" min="0"
-                              defaultValue={cfaRate}
-                              className="text-xs border rounded px-1 py-0.5 w-16" />
-                            <button className="btn btn-sm btn-primary text-xs px-1 py-0.5">✓</button>
-                          </form>
-                        </details>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
+                      <details className="inline-block">
+                        <summary className="cursor-pointer text-xs underline decoration-dotted">
+                          {cfaRate > 0 ? `${fmtEuro(cfaRate)}/h` : <span className="text-red-600 font-semibold">⚠ à saisir</span>}
+                          {hasCfaOverride && <span className="ml-1 text-[9px] text-amber-600" title="Tarif spécifique à cette séance">●</span>}
+                        </summary>
+                        <form action={updateSessionRates} className="mt-1 flex gap-1 items-center bg-white border rounded p-1 shadow-sm">
+                          <input type="hidden" name="session_id" value={sessionId} />
+                          <input type="hidden" name="return_to" value={returnTo} />
+                          <input name="cfa_hourly_rate_override" type="number" step="0.01" min="0"
+                            defaultValue={hasCfaOverride ? e.session.cfa_hourly_rate_override : (cfaRate || '')}
+                            placeholder="€/h" className="text-xs border rounded px-1 py-0.5 w-16" />
+                          <button className="btn btn-sm btn-primary text-xs px-1 py-0.5">✓</button>
+                        </form>
+                      </details>
+                      {missionId && !hasCfaOverride && cfaRate > 0 && (
+                        <div className="text-[9px] text-gray-400 mt-0.5">Tarif de la mission</div>
                       )}
                     </td>
                     <td className="font-semibold text-sm text-blue-700">{fmtEuro(ca)}</td>

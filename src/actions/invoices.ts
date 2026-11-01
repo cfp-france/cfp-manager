@@ -57,7 +57,7 @@ export async function generateMyMonthlyInvoice(formData: FormData) {
  // Récupérer les heures validées sur la période, non encore facturées
  const { data: entries } = await s.from('time_entries')
  .select(`id, session_id, work_date, hours_actual, actual_start, actual_end,
- session:mission_sessions(mission_id, cfa_id,
+ session:mission_sessions(mission_id, cfa_id, trainer_hourly_rate_override,
  mission:missions(name, trainer_hourly_rate, cfa:cfa(name)),
  cfa:cfa(name))`)
  .eq('trainer_id', trainer.id)
@@ -86,8 +86,10 @@ export async function generateMyMonthlyInvoice(formData: FormData) {
  let totalHt = 0
  const lines = dedupedEntries.map((e: any) => {
  const h = Number(e.hours_actual ?? 0)
- // Priorité : tarif mission (si > 0) → tarif par défaut du formateur → 0
- const rate = Number(e.session?.mission?.trainer_hourly_rate) || Number(trainer.hourly_rate_default) || 0
+ // Priorité : override séance → tarif mission → tarif par défaut du formateur → 0
+ const rate = Number(e.session?.trainer_hourly_rate_override)
+   || Number(e.session?.mission?.trainer_hourly_rate)
+   || Number(trainer.hourly_rate_default) || 0
  const amt = Math.round(h * rate * 100) / 100
  totalHours += h
  totalHt += amt
@@ -178,7 +180,7 @@ export async function generateCfaInvoice(formData: FormData) {
  const { data: entries } = await s.from('time_entries')
  .select(`id, session_id, work_date, hours_actual, trainer_id,
  trainer:trainers(first_name, last_name),
- session:mission_sessions(id, mission_id, cfa_id, trainer_id, needs_substitution,
+ session:mission_sessions(id, mission_id, cfa_id, trainer_id, needs_substitution, cfa_hourly_rate_override,
  mission:missions(name, cfa_hourly_rate, cfa_id))`)
  .eq('status', 'validated')
  .gte('work_date', from)
@@ -213,8 +215,10 @@ export async function generateCfaInvoice(formData: FormData) {
  let totalHours = 0, totalHt = 0
  const lines = filtered.map((e: any) => {
  const h = Number(e.hours_actual ?? 0)
- // Priorité : tarif mission → tarif CFA par défaut → 0
- const rate = Number(e.session?.mission?.cfa_hourly_rate) || cfaDefaultRate
+ // Priorité : override séance → tarif mission → tarif CFA par défaut → 0
+ const rate = Number(e.session?.cfa_hourly_rate_override)
+   || Number(e.session?.mission?.cfa_hourly_rate)
+   || cfaDefaultRate
  const amt = Math.round(h * rate * 100) / 100
  totalHours += h; totalHt += amt
  return {

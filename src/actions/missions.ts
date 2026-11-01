@@ -143,6 +143,27 @@ export async function unarchiveMission(formData: FormData) {
 }
 
 /**
+ * Modifie les tarifs d'une SÉANCE (override), prioritaire sur le tarif de la mission.
+ * Utile pour les séances sans mission (auto-déclarées) ou pour corriger ponctuellement.
+ * Un champ vide → NULL → retombe sur le tarif de la mission.
+ */
+export async function updateSessionRates(formData: FormData) {
+ const s = createClient()
+ const session_id = formData.get('session_id') as string
+ const trainer_rate_raw = formData.get('trainer_hourly_rate_override')
+ const cfa_rate_raw = formData.get('cfa_hourly_rate_override')
+ const return_to = (formData.get('return_to') as string) || '/invoicing'
+ if (!session_id) return redirect(return_to)
+ const patch: any = {}
+ if (trainer_rate_raw !== null) patch.trainer_hourly_rate_override = trainer_rate_raw === '' ? null : Number(trainer_rate_raw)
+ if (cfa_rate_raw !== null) patch.cfa_hourly_rate_override = cfa_rate_raw === '' ? null : Number(cfa_rate_raw)
+ if (Object.keys(patch).length === 0) return redirect(return_to)
+ await s.from('mission_sessions').update(patch).eq('id', session_id)
+ revalidatePath(return_to)
+ redirect(return_to + (return_to.includes('?') ? '&' : '?') + 'toast=' + encodeURIComponent('Taux de la séance mis à jour.'))
+}
+
+/**
  * Modifie uniquement les tarifs horaires (formateur et/ou CFA) d'une mission.
  * Utilisé depuis la page de récap avant clôture, pour corriger un taux erroné.
  */
