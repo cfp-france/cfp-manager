@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
 import { closeTrainerMonthAsAdmin } from '@/actions/month-closures'
+import { updateMissionRates } from '@/actions/missions'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
@@ -15,11 +16,12 @@ function monthRange(year: number, month: number) {
   return { from, to }
 }
 
-export default async function CloseMonthReview({ params }: { params: { trainerId: string; year: string; month: string } }) {
+export default async function CloseMonthReview({ params, searchParams }: { params: { trainerId: string; year: string; month: string }; searchParams: { toast?: string } }) {
   const trainerId = params.trainerId
   const year = Number(params.year)
   const month = Number(params.month)
   if (!trainerId || !year || !month || month < 1 || month > 12) notFound()
+  const returnTo = `/invoicing/close/${trainerId}/${year}/${month}`
 
   const s = createClient()
   const { from, to } = monthRange(year, month)
@@ -29,7 +31,7 @@ export default async function CloseMonthReview({ params }: { params: { trainerId
     s.from('time_entries')
       .select(`id, session_id, work_date, actual_start, actual_end, hours_actual, status,
                content_covered, work_done, points_to_review,
-               session:mission_sessions(mission:missions(name, trainer_hourly_rate, cfa_hourly_rate, cfa:cfa(name)))`)
+               session:mission_sessions(mission_id, mission:missions(id, name, trainer_hourly_rate, cfa_hourly_rate, cfa:cfa(name)))`)
       .eq('trainer_id', trainerId)
       .gte('work_date', from)
       .lte('work_date', to)
@@ -84,6 +86,12 @@ export default async function CloseMonthReview({ params }: { params: { trainerId
         <Link href="/invoicing" className="btn btn-sm btn-outline">← Retour à la facturation</Link>
       </div>
 
+      {searchParams.toast && (
+        <div className="bg-green-50 border-l-4 border-green-500 p-3 rounded mb-4 text-sm">
+          ✓ {searchParams.toast}
+        </div>
+      )}
+
       {existingClosure && (
         <div className="bg-green-50 border-l-4 border-green-500 p-3 rounded mb-4 text-sm">
           ✓ Ce mois est <b>déjà clôturé</b> depuis le {new Date((existingClosure as any).closed_at).toLocaleDateString('fr-FR')}
@@ -131,8 +139,10 @@ export default async function CloseMonthReview({ params }: { params: { trainerId
                 <th>Horaires</th>
                 <th>Mission / CFA</th>
                 <th>Heures</th>
-                <th>Taux</th>
+                <th>Taux formateur</th>
                 <th>Dû formateur</th>
+                <th>Taux CFA <span className="text-[9px] font-normal text-gray-500">(cliquer pour modifier)</span></th>
+                <th>CA séance</th>
                 <th>Statut</th>
               </tr>
             </thead>
@@ -140,7 +150,10 @@ export default async function CloseMonthReview({ params }: { params: { trainerId
               {all.map((e: any) => {
                 const h = Number(e.hours_actual ?? 0)
                 const trRate = Number(e.session?.mission?.trainer_hourly_rate) || defaultRate
+                const cfaRate = Number(e.session?.mission?.cfa_hourly_rate ?? 0)
+                const missionId = e.session?.mission?.id ?? e.session?.mission_id
                 const amt = h * trRate
+                const ca = h * cfaRate
                 return (
                   <tr key={e.id} className={e.status === 'validated' ? '' : e.status === 'refused' ? 'bg-red-50' : 'bg-amber-50'}>
                     <td className="text-xs">{fmtDate(e.work_date)}</td>
@@ -153,6 +166,26 @@ export default async function CloseMonthReview({ params }: { params: { trainerId
                     <td className="text-xs">{fmtEuro(trRate)}/h</td>
                     <td className="font-semibold text-sm">{fmtEuro(amt)}</td>
                     <td>
+                      {missionId ? (
+                        <details className="inline-block">
+                          <summary className="cursor-pointer text-xs underline decoration-dotted">
+                            {fmtEuro(cfaRate)}/h
+                          </summary>
+                          <form action={updateMissionRates} className="mt-1 flex gap-1 items-center bg-white border rounded p-1 shadow-sm">
+                            <input type="hidden" name="mission_id" value={missionId} />
+                            <input type="hidden" name="return_to" value={returnTo} />
+                            <input name="cfa_hourly_rate" type="number" step="0.01" min="0"
+                              defaultValue={cfaRate}
+                              className="text-xs border rounded px-1 py-0.5 w-16" />
+                            <button className="btn btn-sm btn-primary text-xs px-1 py-0.5">✓</button>
+                          </form>
+                        </details>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="font-semibold text-sm text-blue-700">{fmtEuro(ca)}</td>
+                    <td>
                       {e.status === 'draft' && <span className="status status-pending">Brouillon</span>}
                       {e.status === 'submitted' && <span className="status status-pending">Soumise</span>}
                       {e.status === 'validated' && <span className="status status-validated">✓ Validée</span>}
@@ -162,15 +195,17 @@ export default async function CloseMonthReview({ params }: { params: { trainerId
                 )
               })}
               {all.length === 0 && (
-                <tr><td colSpan={7} className="text-center text-gray-500 py-6 text-sm">Aucune séance sur ce mois.</td></tr>
+                <tr><td colSpan={9} className="text-center text-gray-500 py-6 text-sm">Aucune séance sur ce mois.</td></tr>
               )}
             </tbody>
             <tfoot>
               <tr className="bg-brand-light/40 font-semibold">
-                <td colSpan={3} className="text-right text-sm pr-2">Total heures validées :</td>
+                <td colSpan={3} className="text-right text-sm pr-2">Total validé :</td>
                 <td className="text-sm">{fmtHours(validated.hours)}</td>
                 <td></td>
                 <td className="text-sm">{fmtEuro(validated.amount)}</td>
+                <td></td>
+                <td className="text-sm text-blue-700">{fmtEuro(caTotal)}</td>
                 <td></td>
               </tr>
             </tfoot>

@@ -141,3 +141,23 @@ export async function unarchiveMission(formData: FormData) {
  revalidatePath('/missions')
  redirect(`/missions/${id}`)
 }
+
+/**
+ * Modifie uniquement les tarifs horaires (formateur et/ou CFA) d'une mission.
+ * Utilisé depuis la page de récap avant clôture, pour corriger un taux erroné.
+ */
+export async function updateMissionRates(formData: FormData) {
+ const s = createClient()
+ const id = formData.get('mission_id') as string
+ const trainer_rate_raw = formData.get('trainer_hourly_rate')
+ const cfa_rate_raw = formData.get('cfa_hourly_rate')
+ const return_to = (formData.get('return_to') as string) || '/invoicing'
+ if (!id) return redirect(return_to)
+ const patch: any = {}
+ if (trainer_rate_raw !== null && trainer_rate_raw !== '') patch.trainer_hourly_rate = Number(trainer_rate_raw)
+ if (cfa_rate_raw !== null && cfa_rate_raw !== '') patch.cfa_hourly_rate = Number(cfa_rate_raw)
+ if (Object.keys(patch).length === 0) return redirect(return_to)
+ await s.from('missions').update(patch).eq('id', id)
+ revalidatePath(return_to)
+ redirect(return_to + (return_to.includes('?') ? '&' : '?') + 'toast=' + encodeURIComponent('Taux mis à jour.'))
+}
