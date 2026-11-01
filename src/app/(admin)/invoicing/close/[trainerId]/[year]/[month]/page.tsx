@@ -32,7 +32,8 @@ export default async function CloseMonthReview({ params, searchParams }: { param
       .select(`id, session_id, work_date, actual_start, actual_end, hours_actual, status,
                content_covered, work_done, points_to_review,
                session:mission_sessions(id, mission_id, trainer_hourly_rate_override, cfa_hourly_rate_override,
-                 mission:missions(id, name, trainer_hourly_rate, cfa_hourly_rate, cfa:cfa(name)))`)
+                 mission:missions(id, name, trainer_hourly_rate, cfa_hourly_rate, cfa:cfa(id, name, default_hourly_rate)),
+                 cfa:cfa(id, name, default_hourly_rate))`)
       .eq('trainer_id', trainerId)
       .gte('work_date', from)
       .lte('work_date', to)
@@ -56,8 +57,20 @@ export default async function CloseMonthReview({ params, searchParams }: { param
     refused: { count: 0, hours: 0, amount: 0 },
   }
   let caTotal = 0
-  const effTrRate = (e: any) => Number(e.session?.trainer_hourly_rate_override ?? e.session?.mission?.trainer_hourly_rate) || defaultRate
-  const effCfaRate = (e: any) => Number(e.session?.cfa_hourly_rate_override ?? e.session?.mission?.cfa_hourly_rate ?? 0)
+  // Priorité tarifs (identique au tableau de bord) :
+  //  Formateur : override séance → tarif mission → tarif par défaut du formateur → 0
+  //  CFA      : override séance → tarif mission → tarif par défaut du CFA (via mission.cfa ou session.cfa) → 0
+  const effTrRate = (e: any) =>
+    Number(e.session?.trainer_hourly_rate_override)
+    || Number(e.session?.mission?.trainer_hourly_rate)
+    || defaultRate
+  const effCfaRate = (e: any) => {
+    const cfaObj = e.session?.mission?.cfa ?? e.session?.cfa
+    return Number(e.session?.cfa_hourly_rate_override)
+      || Number(e.session?.mission?.cfa_hourly_rate)
+      || Number(cfaObj?.default_hourly_rate)
+      || 0
+  }
   for (const e of all) {
     const h = Number((e as any).hours_actual ?? 0)
     const trRate = effTrRate(e)
@@ -201,8 +214,12 @@ export default async function CloseMonthReview({ params, searchParams }: { param
                           <button className="btn btn-sm btn-primary text-xs px-1 py-0.5">✓</button>
                         </form>
                       </details>
-                      {missionId && !hasCfaOverride && cfaRate > 0 && (
-                        <div className="text-[9px] text-gray-400 mt-0.5">Tarif de la mission</div>
+                      {!hasCfaOverride && cfaRate > 0 && (
+                        <div className="text-[9px] text-gray-400 mt-0.5">
+                          {Number(e.session?.mission?.cfa_hourly_rate) > 0
+                            ? 'Tarif de la mission'
+                            : 'Tarif CFA par défaut'}
+                        </div>
                       )}
                     </td>
                     <td className="font-semibold text-sm text-blue-700">{fmtEuro(ca)}</td>
