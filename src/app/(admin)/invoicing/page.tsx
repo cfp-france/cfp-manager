@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtEuro, fmtHours } from '@/lib/utils'
 import { generateCfaInvoice, markInvoicePaid, cancelInvoice, recordExternalTrainerInvoice } from '@/actions/invoices'
-import { closeTrainerMonthAsAdmin, markMonthClosurePaid, reopenMonthClosure } from '@/actions/month-closures'
+import { markMonthClosurePaid, reopenMonthClosure } from '@/actions/month-closures'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -181,17 +181,15 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  </summary>
  <div className="card-body space-y-2">
  {notYetClosed.map(w => (
- <form key={`${w.trainerId}-${w.year}-${w.month}`} action={closeTrainerMonthAsAdmin}
- className="flex items-center justify-between gap-3 p-2 bg-brand-light/30 rounded">
- <input type="hidden" name="trainer_id" value={w.trainerId} />
- <input type="hidden" name="year" value={w.year} />
- <input type="hidden" name="month" value={w.month} />
+ <Link key={`${w.trainerId}-${w.year}-${w.month}`}
+ href={`/invoicing/close/${w.trainerId}/${w.year}/${w.month}`}
+ className="flex items-center justify-between gap-3 p-2 bg-brand-light/30 rounded hover:bg-brand-light/60 transition">
  <div className="flex-1">
  <div className="font-semibold text-sm">{w.trainerName} — {MONTHS[w.month - 1]} {w.year}</div>
  <div className="text-xs text-gray-600">{fmtHours(w.hours)} saisies · ~{fmtEuro(w.amount)} HT</div>
  </div>
- <button className="btn btn-sm btn-outline">Clôturer à sa place</button>
- </form>
+ <span className="btn btn-sm btn-outline">Vérifier et clôturer →</span>
+ </Link>
  ))}
  </div>
  </details>
