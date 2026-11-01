@@ -33,6 +33,11 @@ export async function submitTimeEntry(formData: FormData) {
  points_to_review: (formData.get('points_to_review') as string) || null,
  program_completion: formData.get('program_completion') ? Number(formData.get('program_completion')) : null,
  status: isDraft ? 'draft' : 'submitted',
+ // Toute modification par le formateur réinitialise les traces de validation/refus
+ // pour que la saisie repasse proprement dans la file de validation côté admin.
+ validated_at: null,
+ validated_by: null,
+ admin_comment: null,
  }
 
  // Robustesse : s'il existait plusieurs lignes (bug historique), on prend la plus récente

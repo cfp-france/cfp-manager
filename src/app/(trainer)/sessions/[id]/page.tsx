@@ -47,7 +47,10 @@ export default async function SessionEditPage({ params }: { params: { id: string
  const timeEntries = Array.isArray(timeEntriesRaw) ? timeEntriesRaw : (timeEntriesRaw ? [timeEntriesRaw] : [])
  const statusPrio = (st: string) => ({ validated: 4, submitted: 3, draft: 2, refused: 1 } as Record<string, number>)[st] ?? 0
  const existing = [...timeEntries].sort((a: any, b: any) => statusPrio(b?.status) - statusPrio(a?.status))[0]
- const disabled = existing?.status === 'validated'
+ const isValidated = existing?.status === 'validated'
+ // Le formateur peut TOUJOURS modifier et resoumettre, même après validation.
+ // Toute modification d'une saisie validée la repasse à "à revalider" côté admin.
+ const disabled = false
 
  // Demande de suppression en cours sur cette séance ?
  const { data: pendingDeletion } = await s.from('deletion_requests')
@@ -76,10 +79,10 @@ export default async function SessionEditPage({ params }: { params: { id: string
  <PageHeader title={`Saisir la séance du ${fmtDate(session.session_date)}`}
  subtitle={`${session.mission?.cfa?.name} · ${session.mission?.name} · Prévu ${session.start_time?.slice(0,5)}-${session.end_time?.slice(0,5)} (${fmtHours(Number(session.hours_planned))})`} />
 
- {disabled && (
+ {isValidated && (
   <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded mb-4">
    <div className="flex items-center gap-2 font-semibold text-green-800 text-sm">✓ Saisie VALIDÉE par l'administration</div>
-   <div className="text-xs text-green-700 mt-1">Les champs sont verrouillés. Pour toute correction, contactez l'administration pour qu'elle dévalide d'abord la saisie.</div>
+   <div className="text-xs text-green-700 mt-1">Vous pouvez encore la modifier si besoin. Toute modification repassera la saisie en « à revalider » par l'admin.</div>
   </div>
  )}
  {existing?.status === 'refused' && (
@@ -182,7 +185,8 @@ export default async function SessionEditPage({ params }: { params: { id: string
  <div className="flex justify-end gap-2">
  <button name="draft" value="1" className="btn btn-outline">Enregistrer en brouillon</button>
  <button className="btn btn-primary">
-  {existing?.status === 'submitted' ? 'Mettre à jour la saisie (reste soumise)'
+  {existing?.status === 'validated' ? 'Modifier (repassera en à revalider)'
+   : existing?.status === 'submitted' ? 'Mettre à jour la saisie (reste soumise)'
    : existing?.status === 'refused' ? 'Re-soumettre après correction'
    : 'Soumettre pour validation'}
  </button>
