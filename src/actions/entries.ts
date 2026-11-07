@@ -17,6 +17,23 @@ export async function submitTimeEntry(formData: FormData) {
  const blocks = formData.getAll('blocks').map((v) => Number(v))
  const skill_ids = formData.getAll('skills').map((v) => String(v))
 
+ // Robustesse : s'il existait plusieurs lignes (bug historique), on prend la plus récente
+ // et on l'update plutôt que d'en créer une nouvelle qui écraserait les anciennes données affichées.
+ const { data: existingRows } = await s.from('time_entries')
+   .select('id, status, created_by_admin, needs_trainer_pedagogy, validated_at, validated_by')
+   .eq('session_id', session_id)
+   .order('created_at', { ascending: false })
+   .limit(1)
+ const existing = existingRows?.[0]
+
+ // Cas spécial : séance déclarée ET validée par l'admin, avec déroulé pédagogique en attente.
+ // Quand le formateur vient juste compléter le déroulé, on conserve la validation
+ // (l'admin ne veut pas avoir à revalider les heures qu'il avait déjà actées pour sa facturation).
+ const preserveAdminValidation = !!(existing
+   && existing.created_by_admin
+   && existing.needs_trainer_pedagogy
+   && existing.status === 'validated')
+
  const payload: any = {
  session_id,
  trainer_id: trainer.id,
@@ -32,24 +49,15 @@ export async function submitTimeEntry(formData: FormData) {
  work_done: (formData.get('work_done') as string) || null,
  points_to_review: (formData.get('points_to_review') as string) || null,
  program_completion: formData.get('program_completion') ? Number(formData.get('program_completion')) : null,
- status: isDraft ? 'draft' : 'submitted',
- // Toute modification par le formateur réinitialise les traces de validation/refus
- // pour que la saisie repasse proprement dans la file de validation côté admin.
- validated_at: null,
- validated_by: null,
+ // Si l'admin avait validé les heures : on garde 'validated' ; sinon logique habituelle.
+ status: preserveAdminValidation ? 'validated' : (isDraft ? 'draft' : 'submitted'),
+ validated_at: preserveAdminValidation ? existing!.validated_at : null,
+ validated_by: preserveAdminValidation ? existing!.validated_by : null,
  admin_comment: null,
  // Le formateur vient de compléter sa saisie → plus besoin de rappel "déroulé à compléter"
  needs_trainer_pedagogy: false,
  }
 
- // Robustesse : s'il existait plusieurs lignes (bug historique), on prend la plus récente
- // et on l'update plutôt que d'en créer une nouvelle qui écraserait les anciennes données affichées.
- const { data: existingRows } = await s.from('time_entries')
-   .select('id, status')
-   .eq('session_id', session_id)
-   .order('created_at', { ascending: false })
-   .limit(1)
- const existing = existingRows?.[0]
  if (existing) {
  await s.from('time_entries').update(payload).eq('id', existing.id)
  } else {
@@ -433,19 +441,24 @@ export async function adminDeclareSessionForTrainer(formData: FormData) {
   pedagogical_supports,
   work_done,
   points_to_review,
-  // Validation directe uniquement si le déroulé pédagogique est fourni
-  status: validate_now && pedagogyProvided ? 'validated' : 'submitted',
-  validated_at: validate_now && pedagogyProvided ? new Date().toISOString() : null,
-  validated_by: validate_now && pedagogyProvided ? user.id : null,
+  // Validation indépendante du déroulé : l'admin peut valider les heures
+  // pour sa facturation même si le formateur doit encore compléter le déroulé.
+  status: validate_now ? 'validated' : 'submitted',
+  validated_at: validate_now ? new Date().toISOString() : null,
+  validated_by: validate_now ? user.id : null,
   created_by_admin: true,
   // Si l'admin n'a pas rempli la pédagogie → le formateur doit la compléter
+  // (reste true même si l'admin a validé les heures, pour le suivi admin).
   needs_trainer_pedagogy: !pedagogyProvided,
  })
 
  revalidatePath('/validation')
  revalidatePath('/invoicing')
- const toast = validate_now && pedagogyProvided
-  ? 'Séance déclarée et validée.'
+ revalidatePath('/pedagogy-pending')
+ const toast = validate_now
+  ? (pedagogyProvided
+    ? 'Séance déclarée et validée.'
+    : 'Séance validée. Le formateur devra compléter le déroulé pédagogique (vous pourrez le suivre dans « Déroulés à compléter »).')
   : (!pedagogyProvided
     ? 'Séance déclarée. Le formateur devra compléter le déroulé pédagogique.'
     : 'Séance déclarée, en attente de validation.')

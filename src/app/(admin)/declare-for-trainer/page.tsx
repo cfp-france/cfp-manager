@@ -91,8 +91,8 @@ export default async function AdminDeclareSessionForTrainerPage({ searchParams }
       <div>
        <div className="card-title">③ Déroulé pédagogique (optionnel)</div>
        <div className="text-xs text-gray-500 mt-0.5">
-        <b>Si vous laissez vide</b>, le formateur sera invité à compléter lui-même ce déroulé. Si vous le remplissez,
-        vous pourrez cocher « Valider directement » plus bas.
+        <b>Si vous laissez vide</b>, le formateur sera invité à compléter lui-même le déroulé pédagogique.
+        Vous pourrez suivre les déroulés non encore remplis depuis le menu <b>« Déroulés à compléter »</b>.
        </div>
       </div>
      </div>
@@ -112,8 +112,11 @@ export default async function AdminDeclareSessionForTrainerPage({ searchParams }
     <div className="card bg-brand-light/30">
      <div className="card-body">
       <label className="flex items-center gap-2 text-sm cursor-pointer">
-       <input type="checkbox" name="validate_now" value="1" />
-       <span><b>Valider directement</b> cette séance (uniquement si le déroulé pédagogique est rempli ci-dessus)</span>
+       <input type="checkbox" name="validate_now" value="1" defaultChecked />
+       <span>
+        <b>Valider directement les heures</b> (pour pouvoir facturer immédiatement).
+        Le formateur pourra toujours compléter le déroulé pédagogique après, la validation sera conservée.
+       </span>
       </label>
      </div>
     </div>
