@@ -401,22 +401,54 @@ export async function adminDeclareSessionForTrainer(formData: FormData) {
   return redirect('/declare-for-trainer?error=' + encodeURIComponent('Précisez une mission, une formation ou une classe.'))
  }
 
- const { data: session, error: sessErr } = await s.from('mission_sessions').insert({
-  cfa_id,
-  mission_id,
-  formation_id,
-  declared_class_label,
-  session_date,
-  start_time,
-  end_time,
-  break_minutes,
-  room,
-  trainer_id,
-  self_declared: true,
-  declared_by_trainer_id: null, // déclarée par l'admin, pas par le formateur
-  status: 'realized',
- }).select('id').single()
- if (sessErr || !session) return redirect('/declare-for-trainer?error=' + encodeURIComponent(sessErr?.message ?? 'Erreur création séance'))
+ // Y a-t-il déjà une séance pour ce formateur à ce créneau exact ? (évite collision avec
+ // l'index unique uniq_mission_sessions_trainer_slot et permet de compléter une séance
+ // oubliée au lieu d'en créer une nouvelle doublon).
+ const { data: existingSession } = await s.from('mission_sessions')
+  .select('id, mission_id, cfa_id, time_entries(id, status)')
+  .eq('trainer_id', trainer_id)
+  .eq('session_date', session_date)
+  .eq('start_time', start_time)
+  .eq('end_time', end_time)
+  .maybeSingle()
+
+ let sessionId: string
+ if (existingSession) {
+  const teArr = Array.isArray((existingSession as any).time_entries)
+   ? (existingSession as any).time_entries
+   : ((existingSession as any).time_entries ? [(existingSession as any).time_entries] : [])
+  if (teArr.length > 0) {
+   // Saisie déjà présente → ne pas en créer une nouvelle, rediriger vers la fiche
+   return redirect('/declare-for-trainer?error=' + encodeURIComponent(
+    'Une séance avec saisie existe déjà à ce créneau pour ce formateur. Modifiez-la directement depuis la validation des heures.'))
+  }
+  // Séance existante sans saisie → on complète : on rattache le contexte si besoin et on crée la time_entry
+  const patch: any = { break_minutes, room: room ?? null }
+  if (!existingSession.mission_id && mission_id) patch.mission_id = mission_id
+  if (!existingSession.cfa_id && cfa_id) patch.cfa_id = cfa_id
+  if (formation_id) patch.formation_id = formation_id
+  if (declared_class_label) patch.declared_class_label = declared_class_label
+  await s.from('mission_sessions').update(patch).eq('id', existingSession.id)
+  sessionId = existingSession.id as string
+ } else {
+  const { data: session, error: sessErr } = await s.from('mission_sessions').insert({
+   cfa_id,
+   mission_id,
+   formation_id,
+   declared_class_label,
+   session_date,
+   start_time,
+   end_time,
+   break_minutes,
+   room,
+   trainer_id,
+   self_declared: true,
+   declared_by_trainer_id: null, // déclarée par l'admin, pas par le formateur
+   status: 'realized',
+  }).select('id').single()
+  if (sessErr || !session) return redirect('/declare-for-trainer?error=' + encodeURIComponent(sessErr?.message ?? 'Erreur création séance'))
+  sessionId = session.id as string
+ }
 
  const blocks = formData.getAll('blocks').map((v) => Number(v))
  const skill_ids = formData.getAll('skills').map((v) => String(v))
@@ -429,7 +461,7 @@ export async function adminDeclareSessionForTrainer(formData: FormData) {
  const pedagogyProvided = !!content_covered || blocks.length > 0 || skill_ids.length > 0
 
  await s.from('time_entries').insert({
-  session_id: session.id,
+  session_id: sessionId,
   trainer_id,
   work_date: session_date,
   actual_start: start_time,
