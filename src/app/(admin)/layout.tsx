@@ -32,6 +32,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
  { title: 'Opérations', items: [
  { href: '/approvals', label: 'Validation des comptes', badge: approvalsPending ?? 0 },
  { href: '/validation', label: 'Validation des heures', badge: pending ?? 0 },
+ { href: '/declare-for-trainer', label: 'Déclarer séance pour formateur' },
  { href: '/absences', label: 'Absences déclarées', badge: absPending ?? 0 },
  { href: '/substitutions', label: 'Remplacements', badge: subsPending ?? 0 },
  { href: '/deletion-requests', label: 'Demandes de suppression', badge: deletionPending ?? 0 },

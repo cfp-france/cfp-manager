@@ -26,16 +26,18 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  const { trainer } = await requireTrainer()
  const s = createClient()
  const { data: allSessions } = await s.from('mission_sessions')
- .select(`*, mission:missions(name, cfa:cfa(id, name)), cfa:cfa(id, name), time_entries(id, status, hours_actual, actual_start, actual_end, admin_comment, validated_at)`)
+ .select(`*, mission:missions(name, cfa:cfa(id, name)), cfa:cfa(id, name), time_entries(id, status, hours_actual, actual_start, actual_end, admin_comment, validated_at, needs_trainer_pedagogy)`)
  .eq('trainer_id', trainer?.id ?? '00000000-0000-0000-0000-000000000000')
  .order('session_date', { ascending: false })
 
  // Compteurs de statut (sur toutes les séances du formateur)
+ // "À saisir" inclut : pas de time_entry OU time_entry déclarée par l'admin
+ // en attente de déroulé pédagogique (needs_trainer_pedagogy=true)
  const counts = { total: 0, aSaisir: 0, draft: 0, submitted: 0, validated: 0, refused: 0 }
  for (const se of (allSessions ?? []) as any[]) {
   counts.total++
   const te = Array.isArray(se.time_entries) ? se.time_entries[0] : se.time_entries
-  if (!te) counts.aSaisir++
+  if (!te || te.needs_trainer_pedagogy) counts.aSaisir++
   else if (te.status === 'draft') counts.draft++
   else if (te.status === 'submitted') counts.submitted++
   else if (te.status === 'validated') counts.validated++
@@ -46,10 +48,10 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  const sessions = (allSessions ?? []).filter((se: any) => {
   if (!statusFilter) return true
   const te = Array.isArray(se.time_entries) ? se.time_entries[0] : se.time_entries
-  if (statusFilter === 'to_fill') return !te
-  if (statusFilter === 'draft') return te?.status === 'draft'
-  if (statusFilter === 'submitted') return te?.status === 'submitted'
-  if (statusFilter === 'validated') return te?.status === 'validated'
+  if (statusFilter === 'to_fill') return !te || te.needs_trainer_pedagogy
+  if (statusFilter === 'draft') return te?.status === 'draft' && !te?.needs_trainer_pedagogy
+  if (statusFilter === 'submitted') return te?.status === 'submitted' && !te?.needs_trainer_pedagogy
+  if (statusFilter === 'validated') return te?.status === 'validated' && !te?.needs_trainer_pedagogy
   if (statusFilter === 'refused') return te?.status === 'refused'
   return true
  })
@@ -81,6 +83,7 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
   const teArr = Array.isArray(teRaw) ? teRaw : (teRaw ? [teRaw] : [])
   const te = teArr[0]
   const statusLabel = !te ? 'À saisir'
+   : te.needs_trainer_pedagogy ? '📝 À compléter (déclarée par admin)'
    : te.status === 'draft' ? 'Brouillon'
    : te.status === 'submitted' ? 'Soumise'
    : te.status === 'validated' ? `Validée · ${fmtHours(Number(te.hours_actual ?? 0))}`
@@ -235,8 +238,14 @@ export default async function TrainerSessionsPage({ searchParams }: { searchPara
  <td>{fmtHours(Number(se.hours_planned))}</td>
  <td>
  {!te && <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-gray-100 text-gray-700">À saisir</span>}
- {te?.status === 'draft' && <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-gray-100 text-gray-700">📝 Brouillon</span>}
- {te?.status === 'submitted' && (
+ {te?.needs_trainer_pedagogy && (
+  <div>
+   <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-orange-100 text-orange-800">📝 À compléter</span>
+   <div className="text-[10px] text-orange-700 mt-0.5">déclarée par l'admin</div>
+  </div>
+ )}
+ {te?.status === 'draft' && !te?.needs_trainer_pedagogy && <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-gray-100 text-gray-700">📝 Brouillon</span>}
+ {te?.status === 'submitted' && !te?.needs_trainer_pedagogy && (
   <div>
    <span className="inline-block px-2 py-1 rounded text-[11px] font-semibold bg-amber-100 text-amber-800">⏳ Soumise</span>
    <div className="text-[10px] text-gray-500 mt-0.5">en attente admin</div>

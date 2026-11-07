@@ -79,7 +79,18 @@ export default async function SessionEditPage({ params }: { params: { id: string
  <PageHeader title={`Saisir la séance du ${fmtDate(session.session_date)}`}
  subtitle={`${session.mission?.cfa?.name} · ${session.mission?.name} · Prévu ${session.start_time?.slice(0,5)}-${session.end_time?.slice(0,5)} (${fmtHours(Number(session.hours_planned))})`} />
 
- {isValidated && (
+ {existing?.needs_trainer_pedagogy && (
+  <div className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded mb-4">
+   <div className="flex items-center gap-2 font-semibold text-orange-800 text-sm">
+    📝 Séance déclarée par l'administration — merci de compléter le déroulé pédagogique
+   </div>
+   <div className="text-xs text-orange-700 mt-1">
+    Cette séance a été ajoutée à votre planning par l'administration (séance oubliée).
+    Vérifiez les horaires et <b>remplissez le déroulé pédagogique ci-dessous</b> (contenu abordé, compétences visées, travail effectué...), puis soumettez.
+   </div>
+  </div>
+ )}
+ {isValidated && !existing?.needs_trainer_pedagogy && (
   <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded mb-4">
    <div className="flex items-center gap-2 font-semibold text-green-800 text-sm">✓ Saisie VALIDÉE par l'administration</div>
    <div className="text-xs text-green-700 mt-1">Vous pouvez encore la modifier si besoin. Toute modification repassera la saisie en « à revalider » par l'admin.</div>

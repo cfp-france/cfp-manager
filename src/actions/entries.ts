@@ -38,6 +38,8 @@ export async function submitTimeEntry(formData: FormData) {
  validated_at: null,
  validated_by: null,
  admin_comment: null,
+ // Le formateur vient de compléter sa saisie → plus besoin de rappel "déroulé à compléter"
+ needs_trainer_pedagogy: false,
  }
 
  // Robustesse : s'il existait plusieurs lignes (bug historique), on prend la plus récente
@@ -359,6 +361,95 @@ export async function declareSession(formData: FormData) {
  // Redirection vers la fiche de la nouvelle séance pour que le formateur puisse
  // téléverser ses supports pédagogiques si besoin.
  redirect(`/sessions/${session.id}?toast=` + encodeURIComponent('Séance déclarée. Vous pouvez attacher vos supports pédagogiques ci-dessous si besoin.'))
+}
+
+/**
+ * Admin : déclarer une séance oubliée à la place d'un formateur.
+ * Si `validate_now=1` et le déroulé pédagogique est rempli : status='validated' direct.
+ * Sinon status='submitted' (si pédagogie fournie) ou 'submitted' + needs_trainer_pedagogy=true
+ * (si l'admin laisse le déroulé pédagogique vide → le formateur doit compléter).
+ */
+export async function adminDeclareSessionForTrainer(formData: FormData) {
+ const s = createClient()
+ const { data: { user } } = await s.auth.getUser()
+ if (!user) redirect('/login')
+
+ const trainer_id = formData.get('trainer_id') as string
+ const cfa_id = formData.get('cfa_id') as string
+ const mission_id = (formData.get('mission_id') as string) || null
+ const formation_id = (formData.get('formation_id') as string) || null
+ const declared_class_label = (formData.get('declared_class_label') as string) || null
+ const session_date = formData.get('session_date') as string
+ const start_time = formData.get('start_time') as string
+ const end_time = formData.get('end_time') as string
+ const break_minutes = Number(formData.get('break_minutes') ?? 60)
+ const room = (formData.get('room') as string) || null
+ const validate_now = formData.get('validate_now') === '1'
+
+ if (!trainer_id || !cfa_id || !session_date || !start_time || !end_time) {
+  return redirect('/declare-for-trainer?error=' + encodeURIComponent('Champs obligatoires manquants.'))
+ }
+ if (!formation_id && !declared_class_label && !mission_id) {
+  return redirect('/declare-for-trainer?error=' + encodeURIComponent('Précisez une mission, une formation ou une classe.'))
+ }
+
+ const { data: session, error: sessErr } = await s.from('mission_sessions').insert({
+  cfa_id,
+  mission_id,
+  formation_id,
+  declared_class_label,
+  session_date,
+  start_time,
+  end_time,
+  break_minutes,
+  room,
+  trainer_id,
+  self_declared: true,
+  declared_by_trainer_id: null, // déclarée par l'admin, pas par le formateur
+  status: 'realized',
+ }).select('id').single()
+ if (sessErr || !session) return redirect('/declare-for-trainer?error=' + encodeURIComponent(sessErr?.message ?? 'Erreur création séance'))
+
+ const blocks = formData.getAll('blocks').map((v) => Number(v))
+ const skill_ids = formData.getAll('skills').map((v) => String(v))
+ const content_covered = (formData.get('content_covered') as string) || null
+ const pedagogical_supports = (formData.get('pedagogical_supports') as string) || null
+ const work_done = (formData.get('work_done') as string) || null
+ const points_to_review = (formData.get('points_to_review') as string) || null
+
+ // L'admin a-t-il renseigné le déroulé pédagogique ?
+ const pedagogyProvided = !!content_covered || blocks.length > 0 || skill_ids.length > 0
+
+ await s.from('time_entries').insert({
+  session_id: session.id,
+  trainer_id,
+  work_date: session_date,
+  actual_start: start_time,
+  actual_end: end_time,
+  break_minutes,
+  competence_blocks_targeted: blocks,
+  skill_ids,
+  content_covered,
+  pedagogical_supports,
+  work_done,
+  points_to_review,
+  // Validation directe uniquement si le déroulé pédagogique est fourni
+  status: validate_now && pedagogyProvided ? 'validated' : 'submitted',
+  validated_at: validate_now && pedagogyProvided ? new Date().toISOString() : null,
+  validated_by: validate_now && pedagogyProvided ? user.id : null,
+  created_by_admin: true,
+  // Si l'admin n'a pas rempli la pédagogie → le formateur doit la compléter
+  needs_trainer_pedagogy: !pedagogyProvided,
+ })
+
+ revalidatePath('/validation')
+ revalidatePath('/invoicing')
+ const toast = validate_now && pedagogyProvided
+  ? 'Séance déclarée et validée.'
+  : (!pedagogyProvided
+    ? 'Séance déclarée. Le formateur devra compléter le déroulé pédagogique.'
+    : 'Séance déclarée, en attente de validation.')
+ redirect('/declare-for-trainer?toast=' + encodeURIComponent(toast))
 }
 
 /**
