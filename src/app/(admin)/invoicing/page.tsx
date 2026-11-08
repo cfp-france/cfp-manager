@@ -27,6 +27,9 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  if (preset === 'month') {
   defaultFrom = new Date(curY, curM - 1, 1).toISOString().slice(0,10)
   defaultTo = new Date(curY, curM, 0).toISOString().slice(0,10)
+ } else if (preset === 'prev_month') {
+  defaultFrom = new Date(prevY, prevM - 1, 1).toISOString().slice(0,10)
+  defaultTo = new Date(prevY, prevM, 0).toISOString().slice(0,10)
  } else if (preset === 'year') {
   defaultFrom = `${curY}-01-01`; defaultTo = `${curY}-12-31`
  } else if (preset === 'last90') {
@@ -171,6 +174,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  <select name="preset" defaultValue={preset} className="text-sm border rounded px-2 py-1">
  <option value="all">Tout l'historique</option>
  <option value="month">Mois en cours</option>
+ <option value="prev_month">Mois précédent</option>
  <option value="last90">90 derniers jours</option>
  <option value="year">Année en cours</option>
  <option value="custom">Personnalisée (dates ci-dessous)</option>
