@@ -21,8 +21,8 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  const prevM = curM === 1 ? 12 : curM - 1
  const prevY = curM === 1 ? curY - 1 : curY
 
- // Filtres période + formateur
- const preset = searchParams.preset ?? 'all'
+ // Filtres période + formateur (défaut = mois précédent, cadence facturation)
+ const preset = searchParams.preset ?? 'prev_month'
  let defaultFrom: string, defaultTo: string
  if (preset === 'month') {
   defaultFrom = new Date(curY, curM - 1, 1).toISOString().slice(0,10)
@@ -61,6 +61,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  (() => {
   let q = s.from('time_entries')
    .select(`hours_actual, work_date, trainer_id,
+    trainer:trainers(hourly_rate_default),
     session:mission_sessions(trainer_hourly_rate_override, cfa_hourly_rate_override,
       mission:missions(trainer_hourly_rate, cfa_hourly_rate, cfa:cfa(id, default_hourly_rate)),
       cfa:cfa(id, default_hourly_rate))`)
@@ -72,9 +73,19 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  })(),
  ])
 
- // KPI CA généré + coût formateur sur la période filtrée
+ // Les KPIs ne prennent en compte QUE les heures issues de mois CLÔTURÉS
+ // (par le formateur ou par l'admin). Clé : trainer_id + année/mois.
+ const closedMonthKeys = new Set(
+  (closures ?? []).map((c: any) => `${c.trainer_id}-${c.period_year}-${c.period_month}`)
+ )
+
+ // KPI CA généré + coût formateur sur la période filtrée (uniquement mois clôturés)
  let caGenere = 0, coutFormateurPeriode = 0
  for (const e of validatedEntries ?? []) {
+  const d = new Date((e as any).work_date)
+  const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1
+  const key = `${(e as any).trainer_id}-${y}-${m}`
+  if (!closedMonthKeys.has(key)) continue // ignorer les heures des mois non clôturés
   const h = Number((e as any).hours_actual ?? 0)
   const se: any = (e as any).session
   const cfaObj = se?.mission?.cfa ?? se?.cfa
@@ -82,7 +93,8 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
     || Number(se?.mission?.cfa_hourly_rate)
     || Number(cfaObj?.default_hourly_rate) || 0
   const trRate = Number(se?.trainer_hourly_rate_override)
-    || Number(se?.mission?.trainer_hourly_rate) || 0
+    || Number(se?.mission?.trainer_hourly_rate)
+    || Number((e as any).trainer?.hourly_rate_default) || 0
   caGenere += h * cfaRate
   coutFormateurPeriode += h * trRate
  }
@@ -135,17 +147,27 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  }
  const toGenerate = Object.values(cfaGroups).sort((a, b) => (b.year - a.year) || (b.month - a.month))
 
- // Filtrage des listes affichées selon formateur sélectionné
- const closuresFiltered = (closures ?? []).filter((c: any) => !trainerFilter || c.trainer_id === trainerFilter)
- const trainerInvoicesFiltered = (trainerInvoices ?? []).filter((i: any) => !trainerFilter || i.trainer_id === trainerFilter)
+ // Helpers : une clôture ou une facture est-elle dans la période filtrée ?
+ const inPeriod = (year: number, month: number) => {
+  const pStart = `${year}-${String(month).padStart(2,'0')}-01`
+  const pEnd = new Date(year, month, 0).toISOString().slice(0,10)
+  return pEnd >= from && pStart <= to
+ }
 
- // Totaux (scopés au formateur filtré si actif ; toutes périodes confondues pour les factures/clôtures)
+ // Filtrage des listes affichées selon formateur sélectionné + période (clôtures / factures)
+ const closuresFiltered = (closures ?? []).filter((c: any) =>
+  (!trainerFilter || c.trainer_id === trainerFilter) && inPeriod(c.period_year, c.period_month))
+ const trainerInvoicesFiltered = (trainerInvoices ?? []).filter((i: any) =>
+  (!trainerFilter || i.trainer_id === trainerFilter) && inPeriod(i.period_year, i.period_month))
+ const cfaInvoicesInPeriod = (cfaInvoices ?? []).filter((i: any) => inPeriod(i.period_year, i.period_month))
+
+ // KPIs Dû / Payé : scopés au formateur + à la période
  const trPaid = trainerInvoicesFiltered.filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
  + closuresFiltered.filter((c: any) => c.paid_at).reduce((s: number, c: any) => s + Number(c.total_amount_ht), 0)
  const trPending = trainerInvoicesFiltered.filter((i: any) => i.status === 'sent' || i.status === 'draft').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
  + closuresFiltered.filter((c: any) => !c.paid_at).reduce((s: number, c: any) => s + Number(c.total_amount_ht), 0)
- const cfaPaid = (cfaInvoices ?? []).filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
- const cfaPending = (cfaInvoices ?? []).filter((i: any) => i.status === 'sent' || i.status === 'draft').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
+ const cfaPaid = cfaInvoicesInPeriod.filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
+ const cfaPending = cfaInvoicesInPeriod.filter((i: any) => i.status === 'sent' || i.status === 'draft').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
 
  return (
  <div>
@@ -202,11 +224,11 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  </form>
 
  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
- <Kpi label="CA généré" value={fmtEuro(caGenere)} sub="sur heures validées (période)" tone="blue" />
- <Kpi label="Marge brute" value={fmtEuro(margePeriode)} sub="CA − coût formateur (période)" tone={margePeriode >= 0 ? 'green' : 'amber'} />
- <Kpi label="Dû aux formateurs" value={fmtEuro(trPending)} tone="amber" />
- <Kpi label="Déjà payé aux formateurs" value={fmtEuro(trPaid)} tone="green" />
- <Kpi label="Encaissé / En attente CFA" value={`${fmtEuro(cfaPaid)} / ${fmtEuro(cfaPending)}`} tone="green" />
+ <Kpi label="CA généré" value={fmtEuro(caGenere)} sub="mois clôturés (période)" tone="blue" />
+ <Kpi label="Marge brute" value={fmtEuro(margePeriode)} sub="CA − coût formateur" tone={margePeriode >= 0 ? 'green' : 'amber'} />
+ <Kpi label="Dû aux formateurs" value={fmtEuro(trPending)} sub="clôtures non payées" tone="amber" />
+ <Kpi label="Déjà payé aux formateurs" value={fmtEuro(trPaid)} sub="clôtures réglées" tone="green" />
+ <Kpi label="Encaissé / En attente CFA" value={`${fmtEuro(cfaPaid)} / ${fmtEuro(cfaPending)}`} sub="factures CFA" tone="green" />
  </div>
 
  {/* Clôtures mensuelles formateurs */}
