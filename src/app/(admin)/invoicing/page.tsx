@@ -8,7 +8,12 @@ import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 const MONTHS = ['Janv.','Févr.','Mars','Avr.','Mai','Juin','Juil.','Août','Sept.','Oct.','Nov.','Déc.']
 
-export default async function InvoicingDashboard({ searchParams }: { searchParams: { empty?: string; error?: string; toast?: string } }) {
+function parseDate(v?: string): string | null {
+ if (!v) return null
+ return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null
+}
+
+export default async function InvoicingDashboard({ searchParams }: { searchParams: { empty?: string; error?: string; toast?: string; from?: string; to?: string; trainer?: string; preset?: string } }) {
  const s = createClient()
  const now = new Date()
  const curY = now.getUTCFullYear()
@@ -16,7 +21,25 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  const prevM = curM === 1 ? 12 : curM - 1
  const prevY = curM === 1 ? curY - 1 : curY
 
- const [{ data: trainerInvoices }, { data: cfaInvoices }, { data: cfas }, { data: trainers }, { data: closures }, { data: allEntries }] = await Promise.all([
+ // Filtres période + formateur
+ const preset = searchParams.preset ?? 'all'
+ let defaultFrom: string, defaultTo: string
+ if (preset === 'month') {
+  defaultFrom = new Date(curY, curM - 1, 1).toISOString().slice(0,10)
+  defaultTo = new Date(curY, curM, 0).toISOString().slice(0,10)
+ } else if (preset === 'year') {
+  defaultFrom = `${curY}-01-01`; defaultTo = `${curY}-12-31`
+ } else if (preset === 'last90') {
+  const d = new Date(); d.setDate(d.getDate() - 90)
+  defaultFrom = d.toISOString().slice(0,10); defaultTo = now.toISOString().slice(0,10)
+ } else { // all
+  defaultFrom = '2020-01-01'; defaultTo = '2099-12-31'
+ }
+ const from = parseDate(searchParams.from) ?? defaultFrom
+ const to = parseDate(searchParams.to) ?? defaultTo
+ const trainerFilter = searchParams.trainer && searchParams.trainer !== '' ? searchParams.trainer : null
+
+ const [{ data: trainerInvoices }, { data: cfaInvoices }, { data: cfas }, { data: trainers }, { data: closures }, { data: allEntries }, { data: validatedEntries }] = await Promise.all([
  s.from('trainer_invoices')
  .select('*, trainer:trainers(first_name, last_name, company_name)')
  .order('period_year', { ascending: false }).order('period_month', { ascending: false }).limit(100),
@@ -31,7 +54,36 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  s.from('time_entries')
  .select('work_date, hours_actual, trainer_id, status, trainer:trainers(id, first_name, last_name, company_name), session:mission_sessions(mission:missions(trainer_hourly_rate))')
  .in('status', ['submitted', 'validated']),
+ // Entrées validées pour calcul CA généré (filtrées période + formateur)
+ (() => {
+  let q = s.from('time_entries')
+   .select(`hours_actual, work_date, trainer_id,
+    session:mission_sessions(trainer_hourly_rate_override, cfa_hourly_rate_override,
+      mission:missions(trainer_hourly_rate, cfa_hourly_rate, cfa:cfa(id, default_hourly_rate)),
+      cfa:cfa(id, default_hourly_rate))`)
+   .eq('status', 'validated')
+   .gte('work_date', from)
+   .lte('work_date', to)
+  if (trainerFilter) q = q.eq('trainer_id', trainerFilter)
+  return q
+ })(),
  ])
+
+ // KPI CA généré + coût formateur sur la période filtrée
+ let caGenere = 0, coutFormateurPeriode = 0
+ for (const e of validatedEntries ?? []) {
+  const h = Number((e as any).hours_actual ?? 0)
+  const se: any = (e as any).session
+  const cfaObj = se?.mission?.cfa ?? se?.cfa
+  const cfaRate = Number(se?.cfa_hourly_rate_override)
+    || Number(se?.mission?.cfa_hourly_rate)
+    || Number(cfaObj?.default_hourly_rate) || 0
+  const trRate = Number(se?.trainer_hourly_rate_override)
+    || Number(se?.mission?.trainer_hourly_rate) || 0
+  caGenere += h * cfaRate
+  coutFormateurPeriode += h * trRate
+ }
+ const margePeriode = caGenere - coutFormateurPeriode
 
  // Mois travaillés par formateur, non encore clôturés — pour que l'admin puisse clôturer à leur place
  const closureKeys = new Set((closures ?? []).map((c: any) => `${c.trainer_id}-${c.period_year}-${c.period_month}`))
@@ -54,6 +106,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  // Exclure le mois en cours (le formateur n'est pas censé l'avoir fini)
  const notYetClosed = Object.values(workedMap)
   .filter(w => !(w.year === curY && w.month === curM))
+  .filter(w => !trainerFilter || w.trainerId === trainerFilter)
   .sort((a, b) => (b.year - a.year) || (b.month - a.month) || a.trainerName.localeCompare(b.trainerName))
 
  // Pour l'assistant "Générer facture CFA" : lister les (CFA, mois) avec heures validées non facturées
@@ -79,11 +132,15 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  }
  const toGenerate = Object.values(cfaGroups).sort((a, b) => (b.year - a.year) || (b.month - a.month))
 
- // Totaux
- const trPaid = (trainerInvoices ?? []).filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
- + (closures ?? []).filter((c: any) => c.paid_at).reduce((s: number, c: any) => s + Number(c.total_amount_ht), 0)
- const trPending = (trainerInvoices ?? []).filter((i: any) => i.status === 'sent' || i.status === 'draft').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
- + (closures ?? []).filter((c: any) => !c.paid_at).reduce((s: number, c: any) => s + Number(c.total_amount_ht), 0)
+ // Filtrage des listes affichées selon formateur sélectionné
+ const closuresFiltered = (closures ?? []).filter((c: any) => !trainerFilter || c.trainer_id === trainerFilter)
+ const trainerInvoicesFiltered = (trainerInvoices ?? []).filter((i: any) => !trainerFilter || i.trainer_id === trainerFilter)
+
+ // Totaux (scopés au formateur filtré si actif ; toutes périodes confondues pour les factures/clôtures)
+ const trPaid = trainerInvoicesFiltered.filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
+ + closuresFiltered.filter((c: any) => c.paid_at).reduce((s: number, c: any) => s + Number(c.total_amount_ht), 0)
+ const trPending = trainerInvoicesFiltered.filter((i: any) => i.status === 'sent' || i.status === 'draft').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
+ + closuresFiltered.filter((c: any) => !c.paid_at).reduce((s: number, c: any) => s + Number(c.total_amount_ht), 0)
  const cfaPaid = (cfaInvoices ?? []).filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
  const cfaPending = (cfaInvoices ?? []).filter((i: any) => i.status === 'sent' || i.status === 'draft').reduce((s: number, i: any) => s + Number(i.amount_ttc), 0)
 
@@ -107,15 +164,49 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  </div>
  )}
 
- <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+ {/* Barre de filtres */}
+ <form className="card p-3 mb-4 flex flex-wrap items-end gap-3 bg-brand-light/30">
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Période rapide</label>
+ <select name="preset" defaultValue={preset} className="text-sm border rounded px-2 py-1">
+ <option value="all">Tout l'historique</option>
+ <option value="month">Mois en cours</option>
+ <option value="last90">90 derniers jours</option>
+ <option value="year">Année en cours</option>
+ <option value="custom">Personnalisée (dates ci-dessous)</option>
+ </select>
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Du</label>
+ <input type="date" name="from" defaultValue={from} className="text-sm border rounded px-2 py-1" />
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Au</label>
+ <input type="date" name="to" defaultValue={to} className="text-sm border rounded px-2 py-1" />
+ </div>
+ <div className="field mb-0 flex-1 min-w-[200px]">
+ <label className="text-[11px] font-semibold text-navy">Formateur</label>
+ <select name="trainer" defaultValue={trainerFilter ?? ''} className="text-sm border rounded px-2 py-1 w-full">
+ <option value="">Tous les formateurs</option>
+ {(trainers ?? []).map((t: any) => (
+ <option key={t.id} value={t.id}>{t.company_name || `${t.first_name ?? ''} ${t.last_name ?? ''}`.trim()}</option>
+ ))}
+ </select>
+ </div>
+ <button className="btn btn-sm btn-primary">Appliquer</button>
+ <Link href="/invoicing" className="btn btn-sm btn-outline">Réinitialiser</Link>
+ </form>
+
+ <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+ <Kpi label="CA généré" value={fmtEuro(caGenere)} sub="sur heures validées (période)" tone="blue" />
+ <Kpi label="Marge brute" value={fmtEuro(margePeriode)} sub="CA − coût formateur (période)" tone={margePeriode >= 0 ? 'green' : 'amber'} />
  <Kpi label="Dû aux formateurs" value={fmtEuro(trPending)} tone="amber" />
  <Kpi label="Déjà payé aux formateurs" value={fmtEuro(trPaid)} tone="green" />
- <Kpi label="En attente CFA" value={fmtEuro(cfaPending)} tone="amber" />
- <Kpi label="Encaissé CFA" value={fmtEuro(cfaPaid)} tone="green" />
+ <Kpi label="Encaissé / En attente CFA" value={`${fmtEuro(cfaPaid)} / ${fmtEuro(cfaPending)}`} tone="green" />
  </div>
 
  {/* Clôtures mensuelles formateurs */}
- {(closures && closures.length > 0) && (
+ {(closuresFiltered && closuresFiltered.length > 0) && (
  <div className="card mb-5">
  <div className="card-header">
  <div>
@@ -129,7 +220,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  <table className="w-full">
  <thead><tr><th>Formateur</th><th>Période</th><th>Heures</th><th>Montant HT</th><th>Clôturé</th><th>Statut</th><th></th></tr></thead>
  <tbody>
- {(closures ?? []).map((c: any) => (
+ {closuresFiltered.map((c: any) => (
  <tr key={c.id} className={c.paid_at ? '' : 'bg-amber-50'}>
  <td className="text-xs">{c.trainer?.company_name || `${c.trainer?.first_name ?? ''} ${c.trainer?.last_name ?? ''}`}</td>
  <td className="text-xs">{MONTHS[c.period_month - 1]} {c.period_year}</td>
@@ -302,7 +393,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  <table className="w-full">
  <thead><tr><th>N°</th><th>Formateur</th><th>Période</th><th>TTC</th><th>Statut</th><th></th></tr></thead>
  <tbody>
- {(trainerInvoices ?? []).map((inv: any) => (
+ {trainerInvoicesFiltered.map((inv: any) => (
  <tr key={inv.id} className={inv.status === 'sent' ? 'bg-amber-50' : ''}>
  <td className="font-mono text-[11px]">{inv.invoice_number}</td>
  <td className="text-xs">{inv.trainer?.company_name || `${inv.trainer?.first_name ?? ''} ${inv.trainer?.last_name ?? ''}`}</td>
@@ -326,7 +417,7 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  </td>
  </tr>
  ))}
- {(!trainerInvoices || trainerInvoices.length === 0) && (
+ {trainerInvoicesFiltered.length === 0 && (
  <tr><td colSpan={6} className="text-center text-gray-500 py-6 text-sm">Aucune facture formateur.</td></tr>
  )}
  </tbody>
@@ -377,13 +468,14 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  )
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone: 'green' | 'amber' }) {
- const bg = tone === 'green' ? 'bg-green-50' : 'bg-amber-50'
- const txt = tone === 'green' ? 'text-green-800' : 'text-amber-800'
+function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: 'green' | 'amber' | 'blue' }) {
+ const bg = tone === 'green' ? 'bg-green-50' : tone === 'amber' ? 'bg-amber-50' : 'bg-blue-50'
+ const txt = tone === 'green' ? 'text-green-800' : tone === 'amber' ? 'text-amber-800' : 'text-blue-800'
  return (
- <div className={`card p-4 ${bg}`}>
+ <div className={`card p-3 ${bg}`}>
  <div className="text-[11px] text-gray-600 font-semibold uppercase tracking-wider">{label}</div>
- <div className={`text-xl font-bold ${txt} mt-1`}>{value}</div>
+ <div className={`text-lg font-bold ${txt} mt-1`}>{value}</div>
+ {sub && <div className="text-[10px] text-gray-500 mt-0.5">{sub}</div>}
  </div>
  )
 }
