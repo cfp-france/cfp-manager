@@ -418,9 +418,18 @@ export async function adminDeclareSessionForTrainer(formData: FormData) {
    ? (existingSession as any).time_entries
    : ((existingSession as any).time_entries ? [(existingSession as any).time_entries] : [])
   if (teArr.length > 0) {
-   // Saisie déjà présente → ne pas en créer une nouvelle, rediriger vers la fiche
-   return redirect('/declare-for-trainer?error=' + encodeURIComponent(
-    'Une séance avec saisie existe déjà à ce créneau pour ce formateur. Modifiez-la directement depuis la validation des heures.'))
+   // Saisie déjà présente → message explicite selon le statut réel
+   const statuses = teArr.map((t: any) => t.status).filter(Boolean)
+   const hasValidated = statuses.includes('validated')
+   const hasSubmitted = statuses.includes('submitted')
+   const hasRefused = statuses.includes('refused')
+   const hasDraft = statuses.includes('draft')
+   let msg = 'Une séance avec saisie existe déjà à ce créneau pour ce formateur. '
+   if (hasValidated) msg += 'La saisie est déjà VALIDÉE — rien à faire, elle est comptabilisée. Vous pouvez la consulter depuis le tableau de bord.'
+   else if (hasSubmitted) msg += 'La saisie est SOUMISE — allez dans « Validation des heures » pour la valider ou la refuser.'
+   else if (hasRefused) msg += 'La saisie a été REFUSÉE précédemment — le formateur doit la corriger et la re-soumettre.'
+   else if (hasDraft) msg += 'Une saisie est en BROUILLON côté formateur — demandez-lui de la soumettre.'
+   return redirect('/declare-for-trainer?error=' + encodeURIComponent(msg))
   }
   // Séance existante sans saisie → on complète : on rattache le contexte si besoin et on crée la time_entry
   const patch: any = { break_minutes, room: room ?? null }
