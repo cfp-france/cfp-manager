@@ -84,16 +84,15 @@ export function CfaInvoicePrint({
       {/* Tableau */}
       <table className="w-full border-collapse mb-4" style={{ tableLayout: 'fixed' }}>
         <colgroup>
-          <col style={{ width: '8%' }} />{/* DATE */}
-          <col style={{ width: '13%' }} />{/* FORMATEURS */}
-          <col style={{ width: '11%' }} />{/* NDA */}
-          <col style={{ width: '9%' }} />{/* HORAIRE */}
-          <col style={{ width: '10%' }} />{/* PROMOTION */}
-          <col style={{ width: '18%' }} />{/* MODULE */}
-          <col style={{ width: '12%' }} />{/* LIEU */}
-          <col style={{ width: '6%' }} />{/* TAUX */}
-          <col style={{ width: '6%' }} />{/* VOLUME */}
-          <col style={{ width: '7%' }} />{/* TOTAL */}
+          <col style={{ width: '10%' }} />{/* DATE */}
+          <col style={{ width: '17%' }} />{/* FORMATEURS */}
+          <col style={{ width: '14%' }} />{/* NDA */}
+          <col style={{ width: '11%' }} />{/* HORAIRE */}
+          <col style={{ width: '15%' }} />{/* PROMOTION */}
+          <col style={{ width: '16%' }} />{/* LIEU */}
+          <col style={{ width: '7%' }} />{/* TAUX */}
+          <col style={{ width: '7%' }} />{/* VOLUME */}
+          <col style={{ width: '9%' }} />{/* TOTAL */}
         </colgroup>
         <thead>
           <tr className="bg-navy text-white text-[10px]">
@@ -102,7 +101,6 @@ export function CfaInvoicePrint({
             <th className="border border-navy/60 p-1.5 text-left">NDA</th>
             <th className="border border-navy/60 p-1.5 text-left">HORAIRE</th>
             <th className="border border-navy/60 p-1.5 text-left">PROMOTION</th>
-            <th className="border border-navy/60 p-1.5 text-left">MODULE</th>
             <th className="border border-navy/60 p-1.5 text-left">LIEU</th>
             <th className="border border-navy/60 p-1.5 text-right">TAUX/H</th>
             <th className="border border-navy/60 p-1.5 text-right">VOLUME/H</th>
@@ -121,7 +119,6 @@ export function CfaInvoicePrint({
                 {fmtHr(l.start_time)} {fmtHr(l.end_time)}
               </td>
               <td className="border border-gray-300 p-1">{l.promotion || '—'}</td>
-              <td className="border border-gray-300 p-1">{l.module || l.mission_name || '—'}</td>
               <td className="border border-gray-300 p-1">{l.lieu || '—'}</td>
               <td className="border border-gray-300 p-1 text-right">{Number(l.hourly_rate)}</td>
               <td className="border border-gray-300 p-1 text-right">{Number(l.hours)}</td>
@@ -129,7 +126,7 @@ export function CfaInvoicePrint({
             </tr>
           ))}
           {lines.length === 0 && (
-            <tr><td colSpan={10} className="border border-gray-300 p-3 text-center text-gray-500 italic">Aucune ligne</td></tr>
+            <tr><td colSpan={9} className="border border-gray-300 p-3 text-center text-gray-500 italic">Aucune ligne</td></tr>
           )}
         </tbody>
       </table>
