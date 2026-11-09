@@ -22,7 +22,7 @@ export default async function AdminCfaInvoicePage({ params }: { params: { id: st
  <div>
  <h1 className="text-xl font-bold text-navy">Facture CFA {inv.invoice_number}</h1>
  <p className="text-sm text-gray-500">
- {c?.name} — {MONTHS[inv.period_month - 1]} {inv.period_year} — {fmtEuro(Number(inv.amount_ttc))} TTC
+ {c?.name} — {MONTHS[inv.period_month - 1]} {inv.period_year} — {fmtEuro(Number(inv.amount_ht))} <span className="italic text-gray-400">(exonéré de TVA)</span>
  </p>
  </div>
  <div className="flex gap-2 flex-wrap">

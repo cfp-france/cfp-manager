@@ -268,9 +268,10 @@ export async function generateCfaInvoice(formData: FormData) {
  }
  })
 
- const vatRate = 20
- const vatAmount = Math.round(totalHt * vatRate) / 100
- const totalTtc = totalHt + vatAmount
+ // CFP est exonéré de TVA sur les factures CFA (art. 261-4-4° du CGI, formation professionnelle continue)
+ const vatRate = 0
+ const vatAmount = 0
+ const totalTtc = totalHt
 
  const invoiceNumber = await nextCfaInvoiceNumber(s, year)
 
