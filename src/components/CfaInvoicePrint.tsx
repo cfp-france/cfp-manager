@@ -33,12 +33,31 @@ export function CfaInvoicePrint({
   }
 
   return (
-    <div className="bg-white p-6 shadow-sm rounded-md print:shadow-none print:p-0 max-w-[900px] mx-auto text-[11px]">
+    <div className="bg-white p-6 shadow-sm rounded-md print:shadow-none print:p-0 max-w-[1100px] mx-auto text-[11px] cfa-invoice-print">
       <style>{`
         @media print {
-          @page { size: A4; margin: 10mm; }
-          body { background: white !important; }
+          /* Format paysage pour que les 10 colonnes tiennent bien */
+          @page { size: A4 landscape; margin: 8mm; }
+          html, body { background: white !important; }
           .sidebar, nav, .btn, aside, header { display: none !important; }
+          /* Ne garder QUE la facture à l'impression (masque le reste de l'app) */
+          body > *:not(.cfa-invoice-print-root) { visibility: hidden; }
+          .cfa-invoice-print, .cfa-invoice-print * { visibility: visible; }
+          .cfa-invoice-print {
+            position: absolute;
+            left: 0; top: 0;
+            width: 100%;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: none !important;
+            font-size: 9pt;
+          }
+          /* Tableau serré mais lisible */
+          .cfa-invoice-print table { page-break-inside: auto; }
+          .cfa-invoice-print tr { page-break-inside: avoid; page-break-after: auto; }
+          .cfa-invoice-print thead { display: table-header-group; }
+          .cfa-invoice-print tfoot { display: table-footer-group; }
+          .cfa-invoice-print td, .cfa-invoice-print th { padding: 3px 4px !important; font-size: 8.5pt; }
         }
       `}</style>
 
@@ -63,7 +82,19 @@ export function CfaInvoicePrint({
       <div className="text-center text-base font-bold mb-3">FACTURE N.CFP/ {invoice.invoice_number?.replace(/^CFP-FC-\d+-/, '') ?? invoice.invoice_number}</div>
 
       {/* Tableau */}
-      <table className="w-full border-collapse mb-4">
+      <table className="w-full border-collapse mb-4" style={{ tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: '8%' }} />{/* DATE */}
+          <col style={{ width: '13%' }} />{/* FORMATEURS */}
+          <col style={{ width: '11%' }} />{/* NDA */}
+          <col style={{ width: '9%' }} />{/* HORAIRE */}
+          <col style={{ width: '10%' }} />{/* PROMOTION */}
+          <col style={{ width: '18%' }} />{/* MODULE */}
+          <col style={{ width: '12%' }} />{/* LIEU */}
+          <col style={{ width: '6%' }} />{/* TAUX */}
+          <col style={{ width: '6%' }} />{/* VOLUME */}
+          <col style={{ width: '7%' }} />{/* TOTAL */}
+        </colgroup>
         <thead>
           <tr className="bg-navy text-white text-[10px]">
             <th className="border border-navy/60 p-1.5 text-left">DATE</th>
@@ -80,21 +111,21 @@ export function CfaInvoicePrint({
         </thead>
         <tbody>
           {lines.map((l: any, idx: number) => (
-            <tr key={l.id ?? idx} className={idx % 2 === 0 ? 'bg-blue-50/40' : ''}>
-              <td className="border border-gray-300 p-1.5 whitespace-nowrap">{fmtDMY(l.session_date)}</td>
-              <td className="border border-gray-300 p-1.5">{l.trainer_name}</td>
-              <td className="border border-gray-300 p-1.5">
-                {l.trainer_nda || <span className="italic">En cours d'acquisition</span>}
+            <tr key={l.id ?? idx} className={idx % 2 === 0 ? 'bg-blue-50/40' : ''} style={{ wordBreak: 'break-word' }}>
+              <td className="border border-gray-300 p-1 whitespace-nowrap">{fmtDMY(l.session_date)}</td>
+              <td className="border border-gray-300 p-1">{l.trainer_name}</td>
+              <td className="border border-gray-300 p-1">
+                {l.trainer_nda || <span className="italic text-[9px]">En cours d'acquisition</span>}
               </td>
-              <td className="border border-gray-300 p-1.5 whitespace-nowrap">
+              <td className="border border-gray-300 p-1 whitespace-nowrap">
                 {fmtHr(l.start_time)} {fmtHr(l.end_time)}
               </td>
-              <td className="border border-gray-300 p-1.5">{l.promotion || '—'}</td>
-              <td className="border border-gray-300 p-1.5">{l.module || l.mission_name || '—'}</td>
-              <td className="border border-gray-300 p-1.5">{l.lieu || '—'}</td>
-              <td className="border border-gray-300 p-1.5 text-right">{Number(l.hourly_rate)}</td>
-              <td className="border border-gray-300 p-1.5 text-right">{Number(l.hours)}</td>
-              <td className="border border-gray-300 p-1.5 text-right font-semibold">{Number(l.amount_ht)}</td>
+              <td className="border border-gray-300 p-1">{l.promotion || '—'}</td>
+              <td className="border border-gray-300 p-1">{l.module || l.mission_name || '—'}</td>
+              <td className="border border-gray-300 p-1">{l.lieu || '—'}</td>
+              <td className="border border-gray-300 p-1 text-right">{Number(l.hourly_rate)}</td>
+              <td className="border border-gray-300 p-1 text-right">{Number(l.hours)}</td>
+              <td className="border border-gray-300 p-1 text-right font-semibold">{Number(l.amount_ht)}</td>
             </tr>
           ))}
           {lines.length === 0 && (
