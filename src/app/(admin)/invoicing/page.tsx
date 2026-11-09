@@ -312,29 +312,62 @@ export default async function InvoicingDashboard({ searchParams }: { searchParam
  </details>
  )}
 
- {/* Factures CFA à générer */}
- {toGenerate.length > 0 && (
+ {/* Générer une facture CFA — CFA + période au choix */}
  <div className="card mb-5">
  <div className="card-header">
- <div className="card-title"> Nouvelles factures CFA à générer</div>
+ <div>
+ <div className="card-title">🧾 Générer une facture CFA</div>
+ <div className="text-xs text-gray-500 mt-0.5">
+ Sélectionnez le CFA et la période. Toutes les heures validées non encore facturées sur cette période seront prises en compte.
  </div>
- <div className="card-body space-y-2">
+ </div>
+ </div>
+ <div className="card-body">
+ <form action={generateCfaInvoice} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+ <div className="field mb-0 md:col-span-2">
+ <label className="text-[11px] font-semibold text-navy">CFA *</label>
+ <select name="cfa_id" required className="text-sm border rounded px-2 py-1 w-full">
+ <option value="">— Choisir un CFA —</option>
+ {(cfas ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+ </select>
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Du *</label>
+ <input type="date" name="from" required
+   defaultValue={new Date(prevY, prevM - 1, 1).toISOString().slice(0,10)}
+   className="text-sm border rounded px-2 py-1 w-full" />
+ </div>
+ <div className="field mb-0">
+ <label className="text-[11px] font-semibold text-navy">Au *</label>
+ <input type="date" name="to" required
+   defaultValue={new Date(prevY, prevM, 0).toISOString().slice(0,10)}
+   className="text-sm border rounded px-2 py-1 w-full" />
+ </div>
+ <button className="btn btn-primary">Générer la facture</button>
+ </form>
+ {toGenerate.length > 0 && (
+ <details className="mt-3">
+ <summary className="cursor-pointer text-xs text-gray-600">
+ 💡 Voir les suggestions automatiques ({toGenerate.length} CFA × mois avec heures validées non facturées)
+ </summary>
+ <div className="mt-2 space-y-1">
  {toGenerate.map(g => (
  <form key={`${g.cfaId}-${g.year}-${g.month}`} action={generateCfaInvoice}
- className="flex items-center justify-between gap-3 p-2 bg-brand-light/30 rounded">
+ className="flex items-center justify-between gap-2 p-2 bg-brand-light/20 rounded text-xs">
  <input type="hidden" name="cfa_id" value={g.cfaId} />
  <input type="hidden" name="year" value={g.year} />
  <input type="hidden" name="month" value={g.month} />
  <div className="flex-1">
- <div className="font-semibold text-sm">{g.cfaName} — {MONTHS[g.month - 1]} {g.year}</div>
- <div className="text-xs text-gray-600">{fmtHours(g.hours)} · {fmtEuro(g.amount)} HT</div>
+ <b>{g.cfaName || '— CFA non défini —'}</b> · {MONTHS[g.month - 1]} {g.year} · {fmtHours(g.hours)} · {fmtEuro(g.amount)} HT
  </div>
- <button className="btn btn-sm btn-primary"> Générer</button>
+ <button className="btn btn-sm btn-outline">Générer</button>
  </form>
  ))}
  </div>
- </div>
+ </details>
  )}
+ </div>
+ </div>
 
  {/* Enregistrer une facture externe (reçue hors plateforme) */}
  <details className="card mb-5">

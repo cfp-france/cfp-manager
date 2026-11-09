@@ -161,10 +161,27 @@ export async function generateCfaInvoice(formData: FormData) {
  if (!user) redirect('/login')
 
  const cfa_id = formData.get('cfa_id') as string
- const year = Number(formData.get('year'))
- const month = Number(formData.get('month'))
- if (!cfa_id || !year || !month) return
- const { from, to } = monthRange(year, month)
+ const fromParam = (formData.get('from') as string) || ''
+ const toParam = (formData.get('to') as string) || ''
+ const yearParam = formData.get('year')
+ const monthParam = formData.get('month')
+ if (!cfa_id) return
+
+ // Deux modes : plage de dates explicite (from/to) ou mois (year/month)
+ let from: string, to: string, year: number, month: number
+ if (fromParam && toParam) {
+  from = fromParam; to = toParam
+  // Pour l'unicité (trainer_id, year, month) : on utilise le mois du milieu de la plage
+  const midMs = (new Date(from).getTime() + new Date(to).getTime()) / 2
+  const mid = new Date(midMs)
+  year = mid.getUTCFullYear()
+  month = mid.getUTCMonth() + 1
+ } else if (yearParam && monthParam) {
+  year = Number(yearParam); month = Number(monthParam)
+  const r = monthRange(year, month); from = r.from; to = r.to
+ } else {
+  return redirect('/invoicing?error=' + encodeURIComponent('Précisez une période (dates ou mois).'))
+ }
 
  const { data: existing } = await s.from('cfa_invoices')
  .select('id').eq('cfa_id', cfa_id).eq('period_year', year).eq('period_month', month).maybeSingle()
