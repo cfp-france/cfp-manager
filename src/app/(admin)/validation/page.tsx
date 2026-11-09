@@ -2,11 +2,20 @@ import { PageHeader } from '@/components/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate, fmtHours } from '@/lib/utils'
 import { validateEntry, refuseEntry, attachSessionToMission, changeEntryCfa, editEntryHours } from '@/actions/entries'
+import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ValidationPage() {
+export default async function ValidationPage({ searchParams }: { searchParams: { status?: string } }) {
  const s = createClient()
+ const statusFilter = searchParams.status === 'refused' ? 'refused' : 'submitted'
+
+ // Compteurs globaux pour les deux onglets
+ const [{ count: cntSubmitted }, { count: cntRefused }] = await Promise.all([
+  s.from('time_entries').select('*', { count: 'exact', head: true }).eq('status', 'submitted'),
+  s.from('time_entries').select('*', { count: 'exact', head: true }).eq('status', 'refused'),
+ ])
+
  const { data: entries } = await s.from('time_entries')
  .select(`*,
  trainer:trainers(first_name, last_name),
@@ -19,7 +28,7 @@ export default async function ValidationPage() {
  cfa:cfa(id, name, city),
  template:weekly_schedule_slots!source_template_slot_id(formation:formations(code, name))
  )`)
- .eq('status', 'submitted').order('work_date', { ascending: true })
+ .eq('status', statusFilter).order('work_date', { ascending: statusFilter === 'submitted' ? true : false })
 
  // Charger toutes les missions actives pour permettre le rattachement
  const { data: allMissions } = await s.from('missions')
@@ -35,11 +44,33 @@ export default async function ValidationPage() {
 
  return (
  <div>
- <PageHeader title="Validation des heures" subtitle={`${entries?.length ?? 0} saisies en attente`} />
+ <PageHeader
+   title="Validation des heures"
+   subtitle={statusFilter === 'refused'
+     ? `Historique des ${cntRefused ?? 0} saisies refusées`
+     : `${cntSubmitted ?? 0} saisies en attente`} />
+
+ {/* Onglets En attente / Refusées */}
+ <div className="flex gap-2 mb-4">
+  <Link href="/validation"
+    className={`btn btn-sm ${statusFilter === 'submitted' ? 'btn-primary' : 'btn-outline'}`}>
+    ⏳ En attente ({cntSubmitted ?? 0})
+  </Link>
+  <Link href="/validation?status=refused"
+    className={`btn btn-sm ${statusFilter === 'refused' ? 'btn-primary' : 'btn-outline'}`}>
+    ✗ Refusées ({cntRefused ?? 0})
+  </Link>
+ </div>
+
+ {statusFilter === 'refused' && (
+  <div className="bg-blue-50 border-l-4 border-blue-500 p-3 rounded mb-4 text-xs">
+   💡 Historique des saisies que vous avez refusées. Si vous avez refusé par erreur, vous pouvez cliquer sur <b>« ↺ Re-valider »</b> pour la remettre en validée (les heures seront à nouveau comptabilisées).
+  </div>
+ )}
 
  {(entries?.length ?? 0) === 0 && (
  <div className="card p-8 text-center text-gray-500">
- Aucune saisie en attente. Vous êtes à jour.
+  {statusFilter === 'refused' ? 'Aucune saisie refusée.' : 'Aucune saisie en attente. Vous êtes à jour.'}
  </div>
  )}
 
@@ -85,7 +116,9 @@ export default async function ValidationPage() {
  {e.session?.room ? ` · Salle ${e.session.room}` : ''}
  </div>
  </div>
- <span className="status status-pending">En attente</span>
+ <span className={`status ${statusFilter === 'refused' ? 'status-refused' : 'status-pending'}`}>
+   {statusFilter === 'refused' ? '✗ Refusée' : 'En attente'}
+ </span>
  </div>
  <div className="card-body grid grid-cols-1 md:grid-cols-3 gap-4">
  <div>
@@ -115,6 +148,24 @@ export default async function ValidationPage() {
  </div>
  <div>
  <div className="text-xs font-semibold text-navy mb-2">Actions</div>
+
+ {statusFilter === 'refused' && (
+  <>
+   {e.admin_comment && (
+    <div className="bg-red-50 border-l-4 border-red-500 p-2 rounded text-xs mb-2">
+     <b>Motif de refus :</b> {e.admin_comment}
+    </div>
+   )}
+   <form action={validateEntry}>
+    <input type="hidden" name="entry_id" value={e.id} />
+    <button className="btn btn-success btn-sm w-full">↺ Re-valider (j'avais refusé par erreur)</button>
+   </form>
+   <p className="text-[10px] text-gray-500 mt-1 italic">
+    Les heures seront à nouveau comptées dans le tableau de bord et la facturation.
+   </p>
+  </>
+ )}
+ {statusFilter === 'submitted' && (<>
 
  {/* Correction du CFA (si erreur de saisie du formateur) */}
  <form action={changeEntryCfa} className="mb-2 border border-blue-200 bg-blue-50 rounded p-2">
@@ -174,6 +225,7 @@ export default async function ValidationPage() {
  <input name="motif" placeholder="Motif de refus" className="w-full text-xs border rounded px-2 py-1" required />
  <button className="btn btn-danger btn-sm w-full">Refuser</button>
  </form>
+ </>)}
  </div>
  </div>
  </div>
