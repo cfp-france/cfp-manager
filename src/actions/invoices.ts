@@ -170,18 +170,22 @@ export async function generateCfaInvoice(formData: FormData) {
  .select('id').eq('cfa_id', cfa_id).eq('period_year', year).eq('period_month', month).maybeSingle()
  if (existing) redirect(`/invoicing/cfa/${existing.id}`)
 
- // Récupérer le tarif par défaut du CFA (fallback)
- const { data: cfaRow } = await s.from('cfa').select('default_hourly_rate').eq('id', cfa_id).single()
+ // Récupérer le tarif par défaut du CFA (fallback) + son nom pour la colonne LIEU
+ const { data: cfaRow } = await s.from('cfa').select('name, default_hourly_rate').eq('id', cfa_id).single()
  const cfaDefaultRate = Number(cfaRow?.default_hourly_rate ?? 0)
+ const cfaName = cfaRow?.name ?? ''
 
  // Récupérer heures validées pour ce CFA sur la période, non encore facturées côté CFA
  // On exclut aussi les séances dont le trainer actuel est null (séances à pourvoir / déprogrammées)
  // et les séances qui attendent un remplacement — elles ne doivent pas être facturées.
  const { data: entries } = await s.from('time_entries')
- .select(`id, session_id, work_date, hours_actual, trainer_id,
- trainer:trainers(first_name, last_name),
+ .select(`id, session_id, work_date, hours_actual, actual_start, actual_end, trainer_id,
+ trainer:trainers(first_name, last_name, nda),
  session:mission_sessions(id, mission_id, cfa_id, trainer_id, needs_substitution, cfa_hourly_rate_override,
- mission:missions(name, cfa_hourly_rate, cfa_id))`)
+   start_time, end_time, room, declared_class_label,
+   formation:formations(code, name),
+   cfa:cfa(name),
+   mission:missions(name, cfa_hourly_rate, cfa_id, formation:formations(code, name)))`)
  .eq('status', 'validated')
  .gte('work_date', from)
  .lte('work_date', to)
@@ -221,11 +225,26 @@ export async function generateCfaInvoice(formData: FormData) {
    || cfaDefaultRate
  const amt = Math.round(h * rate * 100) / 100
  totalHours += h; totalHt += amt
+ // Promotion = code formation (ex: NTC, REM, BTS_NDRC) ou classe déclarée
+ const promotion = e.session?.mission?.formation?.code
+   ?? e.session?.formation?.code
+   ?? e.session?.declared_class_label
+   ?? null
+ // Module = nom de la mission (matière) — ex "Stratégie pro", "BLOC 2"
+ const moduleName = e.session?.mission?.name ?? null
+ // Lieu = nom du CFA (ou nom raccourci de la session)
+ const lieu = e.session?.cfa?.name ?? cfaName
  return {
  time_entry_id: e.id,
  session_date: e.work_date,
- trainer_name: `${e.trainer?.first_name ?? ''} ${e.trainer?.last_name ?? ''}`.trim(),
- mission_name: e.session?.mission?.name ?? null,
+ trainer_name: `${e.trainer?.last_name ?? ''} ${e.trainer?.first_name ?? ''}`.trim(),
+ trainer_nda: e.trainer?.nda ?? null,
+ start_time: e.actual_start ?? e.session?.start_time ?? null,
+ end_time: e.actual_end ?? e.session?.end_time ?? null,
+ mission_name: moduleName,
+ promotion,
+ module: moduleName,
+ lieu,
  hours: h,
  hourly_rate: rate,
  amount_ht: amt,

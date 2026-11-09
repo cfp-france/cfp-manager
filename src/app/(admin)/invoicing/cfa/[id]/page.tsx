@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fmtEuro } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { InvoicePrint } from '@/components/InvoicePrint'
+import { CfaInvoicePrint } from '@/components/CfaInvoicePrint'
 import { markInvoicePaid, markInvoiceSent, cancelInvoice } from '@/actions/invoices'
 
 export const dynamic = 'force-dynamic'
@@ -53,20 +53,12 @@ export default async function AdminCfaInvoicePage({ params }: { params: { id: st
  </div>
  </div>
 
- <InvoicePrint
- kind="cfa"
+ <CfaInvoicePrint
  invoice={inv}
- issuer={{
- name: 'CFP — Centre de Formation des Professionnels',
- companyName: 'CFP — Centre de Formation des Professionnels',
- address: 'À compléter dans les paramètres',
- }}
  recipient={{
  name: c?.name,
  address: [c?.address, c?.city].filter(Boolean).join('\n'),
  siret: c?.siret,
- email: c?.email,
- phone: c?.phone,
  }}
  />
  </div>
