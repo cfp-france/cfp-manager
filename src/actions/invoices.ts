@@ -199,10 +199,11 @@ export async function generateCfaInvoice(formData: FormData) {
  .select(`id, session_id, work_date, hours_actual, actual_start, actual_end, trainer_id,
  trainer:trainers(first_name, last_name, nda),
  session:mission_sessions(id, mission_id, cfa_id, trainer_id, needs_substitution, cfa_hourly_rate_override,
-   start_time, end_time, room, declared_class_label,
+   start_time, end_time, room, declared_class_label, source_template_slot_id,
    formation:formations(code, name),
    cfa:cfa(name),
-   mission:missions(name, cfa_hourly_rate, cfa_id, formation:formations(code, name)))`)
+   mission:missions(name, cfa_hourly_rate, cfa_id, formation:formations(code, name)),
+   template:weekly_schedule_slots!source_template_slot_id(label, formation:formations(code, name)))`)
  .eq('status', 'validated')
  .gte('work_date', from)
  .lte('work_date', to)
@@ -245,10 +246,13 @@ export async function generateCfaInvoice(formData: FormData) {
  // Promotion = code formation (ex: NTC, REM, BTS_NDRC) ou classe déclarée
  const promotion = e.session?.mission?.formation?.code
    ?? e.session?.formation?.code
+   ?? e.session?.template?.formation?.code
    ?? e.session?.declared_class_label
    ?? null
- // Module = nom de la mission (matière) — ex "Stratégie pro", "BLOC 2"
- const moduleName = e.session?.mission?.name ?? null
+ // Matière = libellé "Intitulé" de la grille hebdo (priorité), puis nom mission
+ const moduleName = e.session?.template?.label
+   ?? e.session?.mission?.name
+   ?? null
  // Lieu = nom du CFA (ou nom raccourci de la session)
  const lieu = e.session?.cfa?.name ?? cfaName
  return {
