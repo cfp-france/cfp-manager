@@ -32,6 +32,43 @@ export function CfaInvoicePrint({
     return m === '00' ? `${h}h` : `${h}h${m}`
   }
 
+  // Récapitulatif agrégé par (formateur, promotion, matière)
+  type RecapRow = {
+    trainer: string
+    nda: string | null
+    promotion: string
+    module: string
+    firstDate: string
+    lastDate: string
+    hours: number
+    amount: number
+  }
+  const recapMap = new Map<string, RecapRow>()
+  for (const l of lines) {
+    const trainer = l.trainer_name ?? ''
+    const promotion = l.promotion ?? '—'
+    const moduleLabel = l.module ?? l.mission_name ?? '—'
+    const key = `${trainer}||${promotion}||${moduleLabel}`
+    const existing = recapMap.get(key)
+    const d = l.session_date ?? ''
+    if (!existing) {
+      recapMap.set(key, {
+        trainer, nda: l.trainer_nda ?? null, promotion, module: moduleLabel,
+        firstDate: d, lastDate: d,
+        hours: Number(l.hours ?? 0), amount: Number(l.amount_ht ?? 0),
+      })
+    } else {
+      if (d && d < existing.firstDate) existing.firstDate = d
+      if (d && d > existing.lastDate) existing.lastDate = d
+      existing.hours += Number(l.hours ?? 0)
+      existing.amount += Number(l.amount_ht ?? 0)
+    }
+  }
+  const recap = Array.from(recapMap.values())
+    .sort((a, b) => a.trainer.localeCompare(b.trainer) || a.promotion.localeCompare(b.promotion) || a.module.localeCompare(b.module))
+  const recapTotalH = recap.reduce((s, r) => s + r.hours, 0)
+  const recapTotalAmt = recap.reduce((s, r) => s + r.amount, 0)
+
   return (
     <div className="bg-white p-6 shadow-sm rounded-md print:shadow-none print:p-0 max-w-[1100px] mx-auto text-[11px] cfa-invoice-print">
       <style>{`
@@ -175,6 +212,74 @@ export function CfaInvoicePrint({
       <div className="mt-8 pt-3 border-t border-gray-300 text-[9px] text-center text-gray-600 leading-snug">
         C.F.P - SAS - 66 avenue des Champs Élysées - 75008 PARIS - SIRET : 922 180 690 00013<br />
         NDA : 11756640075 - RCS Paris - TVA intracommunautaire : FR38922180690 - APE : 8559A
+      </div>
+
+      {/* RÉCAPITULATIF — nouvelle page à l'impression */}
+      <div className="recap-page" style={{ pageBreakBefore: 'always', breakBefore: 'page', marginTop: '2rem', paddingTop: '1rem' }}>
+        <div className="flex items-center justify-center mb-4">
+          <div className="text-base font-bold text-navy uppercase tracking-wide">
+            Récapitulatif par formateur — Facture {invoice.invoice_number}
+          </div>
+        </div>
+        <div className="text-[11px] text-gray-600 mb-3 text-center">
+          Destinataire : <b>{recipient.name}</b> &nbsp;·&nbsp; Date facture : {fmtDMY(invoice.issue_date)}
+        </div>
+
+        <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: '17%' }} />{/* Formateur */}
+            <col style={{ width: '13%' }} />{/* NDA */}
+            <col style={{ width: '12%' }} />{/* Promotion */}
+            <col style={{ width: '22%' }} />{/* Matière */}
+            <col style={{ width: '16%' }} />{/* Période */}
+            <col style={{ width: '9%' }} />{/* Durée */}
+            <col style={{ width: '11%' }} />{/* Montant */}
+          </colgroup>
+          <thead>
+            <tr className="bg-navy text-white text-[10px]">
+              <th className="border border-navy/60 p-1.5 text-left">FORMATEUR</th>
+              <th className="border border-navy/60 p-1.5 text-left">NDA</th>
+              <th className="border border-navy/60 p-1.5 text-left">PROMOTION</th>
+              <th className="border border-navy/60 p-1.5 text-left">MATIÈRE</th>
+              <th className="border border-navy/60 p-1.5 text-left">PÉRIODE</th>
+              <th className="border border-navy/60 p-1.5 text-right">DURÉE</th>
+              <th className="border border-navy/60 p-1.5 text-right">MONTANT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recap.map((r, i) => (
+              <tr key={i} className={i % 2 === 0 ? 'bg-blue-50/40' : ''} style={{ wordBreak: 'break-word' }}>
+                <td className="border border-gray-300 p-1 font-semibold">{r.trainer}</td>
+                <td className="border border-gray-300 p-1">
+                  {r.nda || <span className="italic text-[9px]">En cours d'acquisition</span>}
+                </td>
+                <td className="border border-gray-300 p-1">{r.promotion}</td>
+                <td className="border border-gray-300 p-1">{r.module}</td>
+                <td className="border border-gray-300 p-1 whitespace-nowrap">
+                  {r.firstDate === r.lastDate
+                    ? fmtDMY(r.firstDate)
+                    : <>Du {fmtDMY(r.firstDate)}<br />au {fmtDMY(r.lastDate)}</>}
+                </td>
+                <td className="border border-gray-300 p-1 text-right">{r.hours} h</td>
+                <td className="border border-gray-300 p-1 text-right font-semibold">{fmtEuro(r.amount)}</td>
+              </tr>
+            ))}
+            {recap.length === 0 && (
+              <tr><td colSpan={7} className="border border-gray-300 p-3 text-center text-gray-500 italic">Aucune ligne</td></tr>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="bg-brand-light/60 font-semibold">
+              <td className="border border-gray-400 p-1.5 text-right" colSpan={5}>TOTAL GÉNÉRAL</td>
+              <td className="border border-gray-400 p-1.5 text-right">{recapTotalH} h</td>
+              <td className="border border-gray-400 p-1.5 text-right">{fmtEuro(recapTotalAmt)}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div className="text-[10px] text-gray-500 italic mt-3 text-center">
+          Récapitulatif agrégé par formateur / promotion / matière.
+        </div>
       </div>
     </div>
   )
