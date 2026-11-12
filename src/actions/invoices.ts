@@ -302,6 +302,42 @@ export async function generateCfaInvoice(formData: FormData) {
  redirect(`/invoicing/cfa/${invoice.id}`)
 }
 
+/**
+ * Met à jour la matière (module) d'UNE ligne de facture CFA.
+ * Enregistre aussi la matière dans le référentiel `subjects` si nouvelle.
+ */
+export async function updateCfaInvoiceLineSubject(formData: FormData) {
+ const s = createClient()
+ const line_id = formData.get('line_id') as string
+ const invoice_id = formData.get('invoice_id') as string
+ const subject = ((formData.get('subject') as string) || '').trim() || null
+ if (!line_id) return redirect('/invoicing')
+ await s.from('cfa_invoice_lines').update({ module: subject }).eq('id', line_id)
+ if (subject) {
+  await s.from('subjects').insert({ name: subject }).select().maybeSingle().then(() => null).catch(() => null)
+ }
+ revalidatePath(`/invoicing/cfa/${invoice_id}`)
+ redirect(`/invoicing/cfa/${invoice_id}#line-${line_id}`)
+}
+
+/**
+ * Applique la même matière à PLUSIEURS lignes de la facture CFA en une fois.
+ * Pratique pour renseigner d'un coup toutes les séances d'un même formateur.
+ */
+export async function bulkUpdateCfaInvoiceSubjects(formData: FormData) {
+ const s = createClient()
+ const invoice_id = formData.get('invoice_id') as string
+ const subject = ((formData.get('subject') as string) || '').trim() || null
+ const lineIds = formData.getAll('line_ids').map(String).filter(Boolean)
+ if (!invoice_id || lineIds.length === 0) return redirect(`/invoicing/cfa/${invoice_id}`)
+ await s.from('cfa_invoice_lines').update({ module: subject }).in('id', lineIds)
+ if (subject) {
+  await s.from('subjects').insert({ name: subject }).select().maybeSingle().then(() => null).catch(() => null)
+ }
+ revalidatePath(`/invoicing/cfa/${invoice_id}`)
+ redirect(`/invoicing/cfa/${invoice_id}`)
+}
+
 // Facture externe reçue d'un formateur (hors plateforme) ———
 // Permet à l'admin d'enregistrer une facture reçue en papier/mail d'un formateur
 // qui n'est pas passé par la génération automatique.
