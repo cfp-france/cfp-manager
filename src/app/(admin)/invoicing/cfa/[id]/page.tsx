@@ -3,12 +3,12 @@ import { fmtEuro } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { CfaInvoicePrint } from '@/components/CfaInvoicePrint'
-import { markInvoicePaid, markInvoiceSent, cancelInvoice, updateCfaInvoiceLineSubject, updateCfaInvoiceLinePromotion, bulkUpdateCfaInvoiceLines } from '@/actions/invoices'
+import { markInvoicePaid, markInvoiceSent, cancelInvoice, updateCfaInvoiceLineSubject, updateCfaInvoiceLinePromotion, bulkUpdateCfaInvoiceLines, refreshCfaInvoiceDerivedFields } from '@/actions/invoices'
 
 export const dynamic = 'force-dynamic'
 const MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 
-export default async function AdminCfaInvoicePage({ params }: { params: { id: string } }) {
+export default async function AdminCfaInvoicePage({ params, searchParams }: { params: { id: string }; searchParams: { toast?: string } }) {
  const s = createClient()
  const [{ data: inv }, { data: subjects }, { data: promotions }] = await Promise.all([
   s.from('cfa_invoices').select('*, cfa:cfa(*), lines:cfa_invoice_lines(*)').eq('id', params.id).single(),
@@ -72,12 +72,31 @@ export default async function AdminCfaInvoicePage({ params }: { params: { id: st
  </div>
  </summary>
  <div className="card-body">
+ {searchParams.toast && (
+  <div className="bg-green-50 border-l-4 border-green-500 p-2 rounded mb-3 text-xs">✓ {searchParams.toast}</div>
+ )}
  <datalist id="subjects-list">
  {subjectOptions.map((name: string) => <option key={name} value={name} />)}
  </datalist>
  <datalist id="promotions-list">
  {promotionOptions.map((name: string) => <option key={name} value={name} />)}
  </datalist>
+
+ {/* Auto-remplissage depuis les données source (compétences cochées, mission, formation, etc.) */}
+ <div className="flex flex-wrap gap-2 items-center mb-3 p-2 bg-blue-50 rounded border border-blue-200">
+ <span className="text-xs text-blue-900">
+ 💡 Remplir automatiquement les cases vides à partir des compétences cochées par le formateur :
+ </span>
+ <form action={refreshCfaInvoiceDerivedFields} className="inline">
+ <input type="hidden" name="invoice_id" value={inv.id} />
+ <button className="btn btn-sm btn-outline">Auto-remplir (cases vides)</button>
+ </form>
+ <form action={refreshCfaInvoiceDerivedFields} className="inline">
+ <input type="hidden" name="invoice_id" value={inv.id} />
+ <input type="hidden" name="force" value="1" />
+ <button className="btn btn-sm btn-outline" title="Écrase même les cases déjà remplies">Tout re-calculer (écrase)</button>
+ </form>
+ </div>
 
  {/* Édition en masse : un seul form englobant les checkboxes + les 2 champs */}
  <form action={bulkUpdateCfaInvoiceLines} className="p-3 bg-brand-light/30 rounded mb-4">

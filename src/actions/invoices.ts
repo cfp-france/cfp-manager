@@ -394,6 +394,81 @@ export async function bulkUpdateCfaInvoicePromotions(formData: FormData) {
 }
 
 /**
+ * Recalcule PROMOTION et MATIÈRE des lignes d'une facture CFA à partir
+ * des données source (time_entries) :
+ *  - promotion : time_entry.promotion → mission → formation → template →
+ *                classe déclarée → dérivée via skill_ids → formation.code
+ *  - matière  : time_entry.matiere → intitulé template → nom mission
+ * Ne remplace que les cellules VIDES par défaut (pour ne pas écraser une
+ * saisie manuelle de l'admin). `force=true` écrase même si déjà rempli.
+ */
+export async function refreshCfaInvoiceDerivedFields(formData: FormData) {
+ const s = createClient()
+ const invoice_id = formData.get('invoice_id') as string
+ const force = formData.get('force') === '1'
+ if (!invoice_id) return redirect('/invoicing')
+
+ const { data: lines } = await s.from('cfa_invoice_lines')
+  .select('id, time_entry_id, promotion, module')
+  .eq('invoice_id', invoice_id)
+ if (!lines || lines.length === 0) return redirect(`/invoicing/cfa/${invoice_id}`)
+
+ const timeEntryIds = lines.map((l: any) => l.time_entry_id).filter(Boolean)
+ if (timeEntryIds.length === 0) return redirect(`/invoicing/cfa/${invoice_id}`)
+
+ const { data: entries } = await s.from('time_entries')
+  .select(`id, promotion, matiere, skill_ids,
+   session:mission_sessions(declared_class_label, source_template_slot_id,
+    formation:formations(code),
+    mission:missions(name, formation:formations(code)),
+    template:weekly_schedule_slots!source_template_slot_id(label, formation:formations(code)))`)
+  .in('id', timeEntryIds)
+ const entryById = new Map<string, any>((entries ?? []).map((e: any) => [e.id, e]))
+
+ // Chaînage skill → formation.code pour le fallback promotion
+ const allSkillIds = Array.from(new Set((entries ?? []).flatMap((e: any) => e.skill_ids ?? []).filter(Boolean))) as string[]
+ const skillToFormation = new Map<string, string>()
+ if (allSkillIds.length > 0) {
+  const { data: skillsRows } = await s.from('skills')
+   .select('id, block:competence_blocks(title, formation:formations(code))')
+   .in('id', allSkillIds)
+  for (const sk of (skillsRows ?? []) as any[]) {
+   const code = sk?.block?.formation?.code
+   if (code) skillToFormation.set(sk.id, code)
+  }
+ }
+
+ let updated = 0
+ for (const l of lines) {
+  const e = entryById.get(l.time_entry_id)
+  if (!e) continue
+  const promotionFromSkills = (e.skill_ids ?? []).map((sid: string) => skillToFormation.get(sid)).find(Boolean) ?? null
+  const computedPromo = e.promotion
+    ?? e.session?.mission?.formation?.code
+    ?? e.session?.formation?.code
+    ?? e.session?.template?.formation?.code
+    ?? e.session?.declared_class_label
+    ?? promotionFromSkills
+    ?? null
+  const computedModule = e.matiere
+    ?? e.session?.template?.label
+    ?? e.session?.mission?.name
+    ?? null
+  const patch: any = {}
+  if (computedPromo && (force || !l.promotion)) patch.promotion = computedPromo
+  if (computedModule && (force || !l.module)) patch.module = computedModule
+  if (Object.keys(patch).length > 0) {
+   await s.from('cfa_invoice_lines').update(patch).eq('id', l.id)
+   updated++
+  }
+ }
+
+ revalidatePath(`/invoicing/cfa/${invoice_id}`)
+ redirect(`/invoicing/cfa/${invoice_id}?toast=` + encodeURIComponent(
+  `${updated} ligne(s) mise(s) à jour depuis les données source.`))
+}
+
+/**
  * Action unifiée bulk : applique promotion ET/OU matière aux lignes cochées.
  * Les champs vides ne sont pas écrits.
  */
