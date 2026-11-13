@@ -97,6 +97,14 @@ export default async function DeclareSessionPage() {
  </div>
  <div className="card-body space-y-3">
  <PedagogyPicker formations={formations} fixedFormationId={null} />
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+ <div className="field"><label>Promotion / Classe <span className="text-red-600">*</span></label>
+ <input name="promotion" required placeholder="Ex : BTS NDRC Promo 1" />
+ </div>
+ <div className="field"><label>Matière enseignée <span className="text-red-600">*</span></label>
+ <input name="matiere" required placeholder="Ex : Négociation vente, Bloc 2, CEJM" />
+ </div>
+ </div>
  <div className="field"><label>Contenu abordé <span className="text-red-600">*</span></label>
  <textarea name="content_covered" rows={2} required placeholder="Détail des chapitres, sujets, cas pratiques" /></div>
  <div className="field"><label>Supports pédagogiques utilisés (description)</label>

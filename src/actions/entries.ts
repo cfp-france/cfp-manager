@@ -34,6 +34,15 @@ export async function submitTimeEntry(formData: FormData) {
    && existing.needs_trainer_pedagogy
    && existing.status === 'validated')
 
+ const promotion = ((formData.get('promotion') as string) || '').trim() || null
+ const matiere = ((formData.get('matiere') as string) || '').trim() || null
+
+ // Promotion + matière obligatoires pour une SOUMISSION (pas pour un brouillon)
+ if (!isDraft && (!promotion || !matiere)) {
+  return redirect(`/sessions/${session_id}?error=` + encodeURIComponent(
+   'La promotion (classe) et la matière sont obligatoires pour soumettre la saisie.'))
+ }
+
  const payload: any = {
  session_id,
  trainer_id: trainer.id,
@@ -49,6 +58,8 @@ export async function submitTimeEntry(formData: FormData) {
  work_done: (formData.get('work_done') as string) || null,
  points_to_review: (formData.get('points_to_review') as string) || null,
  program_completion: formData.get('program_completion') ? Number(formData.get('program_completion')) : null,
+ promotion,
+ matiere,
  // Si l'admin avait validé les heures : on garde 'validated' ; sinon logique habituelle.
  status: preserveAdminValidation ? 'validated' : (isDraft ? 'draft' : 'submitted'),
  validated_at: preserveAdminValidation ? existing!.validated_at : null,
@@ -320,9 +331,17 @@ export async function declareSession(formData: FormData) {
  const break_minutes = Number(formData.get('break_minutes') ?? 60)
  const room = (formData.get('room') as string) || null
 
+ const promotion = ((formData.get('promotion') as string) || '').trim() || declared_class_label || null
+ const matiere = ((formData.get('matiere') as string) || '').trim() || null
+
  if (!cfa_id || !session_date || !start_time || !end_time) return
  // Classe/formation obligatoire : soit une formation du référentiel, soit un texte libre
- if (!formation_id && !declared_class_label) return
+ if (!formation_id && !declared_class_label && !promotion) {
+  return redirect('/declare-session?error=' + encodeURIComponent('Promotion (classe) obligatoire.'))
+ }
+ if (!matiere) {
+  return redirect('/declare-session?error=' + encodeURIComponent('Matière obligatoire.'))
+ }
 
  // 1. Créer la mission_session avec self_declared=true
  const { data: session, error: sessErr } = await s.from('mission_sessions').insert({
@@ -362,6 +381,8 @@ export async function declareSession(formData: FormData) {
  points_to_review: (formData.get('points_to_review') as string) || null,
  program_completion: formData.get('program_completion') ? Number(formData.get('program_completion')) : null,
  trainer_comment: (formData.get('trainer_comment') as string) || null,
+ promotion,
+ matiere,
  status: 'submitted',
  })
 
@@ -465,6 +486,8 @@ export async function adminDeclareSessionForTrainer(formData: FormData) {
  const pedagogical_supports = (formData.get('pedagogical_supports') as string) || null
  const work_done = (formData.get('work_done') as string) || null
  const points_to_review = (formData.get('points_to_review') as string) || null
+ const promotion = ((formData.get('promotion') as string) || '').trim() || declared_class_label || null
+ const matiere = ((formData.get('matiere') as string) || '').trim() || null
 
  // L'admin a-t-il renseigné le déroulé pédagogique ?
  const pedagogyProvided = !!content_covered || blocks.length > 0 || skill_ids.length > 0
@@ -482,6 +505,8 @@ export async function adminDeclareSessionForTrainer(formData: FormData) {
   pedagogical_supports,
   work_done,
   points_to_review,
+  promotion,
+  matiere,
   // Validation indépendante du déroulé : l'admin peut valider les heures
   // pour sa facturation même si le formateur doit encore compléter le déroulé.
   status: validate_now ? 'validated' : 'submitted',

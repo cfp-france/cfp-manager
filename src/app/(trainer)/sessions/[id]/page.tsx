@@ -165,6 +165,16 @@ export default async function SessionEditPage({ params }: { params: { id: string
  initialBlockNumber={initialBlockNumber}
  initialSkillIds={initialSkillIds}
  />
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+ <div className="field"><label>Promotion / Classe <span className="text-red-600">*</span></label>
+ <input name="promotion" required defaultValue={existing?.promotion ?? session.declared_class_label ?? ''}
+   placeholder="Ex : BTS NDRC Promo 1" />
+ </div>
+ <div className="field"><label>Matière enseignée <span className="text-red-600">*</span></label>
+ <input name="matiere" required defaultValue={existing?.matiere ?? ''}
+   placeholder="Ex : Négociation vente, Bloc 2, CEJM" />
+ </div>
+ </div>
  <div className="field"><label>Contenu abordé *</label>
  <textarea name="content_covered" rows={2} defaultValue={existing?.content_covered ?? ''} disabled={disabled} placeholder="Détail des chapitres, sujets, cas pratiques" required></textarea></div>
  <div className="field"><label>Supports pédagogiques utilisés (description)</label>

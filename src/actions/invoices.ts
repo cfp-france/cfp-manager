@@ -197,6 +197,7 @@ export async function generateCfaInvoice(formData: FormData) {
  // et les séances qui attendent un remplacement — elles ne doivent pas être facturées.
  const { data: entries } = await s.from('time_entries')
  .select(`id, session_id, work_date, hours_actual, actual_start, actual_end, trainer_id,
+ promotion, matiere, skill_ids, competence_blocks_targeted,
  trainer:trainers(first_name, last_name, nda),
  session:mission_sessions(id, mission_id, cfa_id, trainer_id, needs_substitution, cfa_hourly_rate_override,
    start_time, end_time, room, declared_class_label, source_template_slot_id,
@@ -234,6 +235,19 @@ export async function generateCfaInvoice(formData: FormData) {
  const dedupSkipped = preFiltered.length - filtered.length
  if (filtered.length === 0) redirect(`/invoicing?empty=1&cfa=${cfa_id}&year=${year}&month=${month}`)
 
+ // Fallback promotion : si time_entry.promotion vide, remonter via skills → block → formation.code
+ const allSkillIds = Array.from(new Set(filtered.flatMap((e: any) => (e.skill_ids ?? [])).filter(Boolean))) as string[]
+ const skillToFormation = new Map<string, string>()
+ if (allSkillIds.length > 0) {
+  const { data: skillsRows } = await s.from('skills')
+   .select('id, block:competence_blocks(formation:formations(code))')
+   .in('id', allSkillIds)
+  for (const sk of (skillsRows ?? []) as any[]) {
+   const code = sk?.block?.formation?.code
+   if (code) skillToFormation.set(sk.id, code)
+  }
+ }
+
  let totalHours = 0, totalHt = 0
  const lines = filtered.map((e: any) => {
  const h = Number(e.hours_actual ?? 0)
@@ -243,14 +257,21 @@ export async function generateCfaInvoice(formData: FormData) {
    || cfaDefaultRate
  const amt = Math.round(h * rate * 100) / 100
  totalHours += h; totalHt += amt
- // Promotion = code formation (ex: NTC, REM, BTS_NDRC) ou classe déclarée
- const promotion = e.session?.mission?.formation?.code
+ // Promotion : priorité à la saisie formateur (time_entry.promotion),
+ // puis mission, formation, template, classe déclarée,
+ // puis fallback depuis les compétences sélectionnées (skill → block → formation.code)
+ const promotionFromSkills = (e.skill_ids ?? []).map((sid: string) => skillToFormation.get(sid)).find(Boolean) ?? null
+ const promotion = e.promotion
+   ?? e.session?.mission?.formation?.code
    ?? e.session?.formation?.code
    ?? e.session?.template?.formation?.code
    ?? e.session?.declared_class_label
+   ?? promotionFromSkills
    ?? null
- // Matière = libellé "Intitulé" de la grille hebdo (priorité), puis nom mission
- const moduleName = e.session?.template?.label
+ // Matière : priorité à la saisie formateur (time_entry.matiere),
+ // puis libellé "Intitulé" de la grille hebdo, puis nom mission
+ const moduleName = e.matiere
+   ?? e.session?.template?.label
    ?? e.session?.mission?.name
    ?? null
  // Lieu = nom du CFA (ou nom raccourci de la session)
